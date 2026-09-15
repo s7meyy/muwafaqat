@@ -9,7 +9,9 @@
 // وهذا الملف يعمل في المتصفّح وفي Node بلا تغيير: لا يقرأ ملفًّا ولا يطلب شبكة،
 // بل يأخذ `load` فيناديها. فالبناء والبحث يُختبران بلا قرصٍ ولا شبكة.
 
-import { normalize } from './normalize.js';
+import { normalize, fingerprint } from './normalize.js';
+import { eraOf, hijriToGregorian } from './eras.js';
+import { shamelaUrl } from './trust.js';
 
 export const INDEX_VERSION = 1;
 
@@ -35,6 +37,19 @@ const NOT_INDEXED = new Set([
 
 const MIN_TOKEN = 3;
 
+// سوابقُ العربية الملتصقة. «بالتمني» و«التمني» و«تمنّي» كلمةٌ واحدةٌ في البحث،
+// وبحثُ الشاملة يجرّدها بالتحليل الصرفي — والفهرس الساكن لا محلّل معه.
+// ★ فنفهرس الصورة كما وردت ومجرّدةً معًا، ونجرّد كلمة البحث كذلك، فيلتقيان. ★
+// (بلا هذا كان «التمني» لا يجد «بالتمني» — وهما في البيت نفسه.)
+const PREFIXES = ['وبال', 'فبال', 'بال', 'كال', 'فال', 'وال', 'لل', 'ال', 'و', 'ف', 'ب', 'ك', 'ل'];
+
+function stripPrefixes(word) {
+  for (const p of PREFIXES) {
+    if (word.length > p.length + MIN_TOKEN - 1 && word.startsWith(p)) return word.slice(p.length);
+  }
+  return word;
+}
+
 /** بصمةٌ ثابتةٌ للكلمة ← رقم شظيّتها. ثابتةٌ عبر اللغات والأنظمة. */
 export function bucketOf(token) {
   let h = 0x811c9dc5;
@@ -55,6 +70,8 @@ export function indexTokens(text) {
   for (const w of normalize(text).split(' ')) {
     if (w.length < MIN_TOKEN || NOT_INDEXED.has(w)) continue;
     seen.add(w);
+    const bare = stripPrefixes(w);
+    if (bare !== w && bare.length >= MIN_TOKEN && !NOT_INDEXED.has(bare)) seen.add(bare);
   }
   return [...seen];
 }
@@ -73,17 +90,26 @@ export function toRecord(verse, id) {
     q: s.pageId ?? null,
     c: s.category ?? null,
     r: verse.register === 'nabati' ? 1 : 0,
+    l: verse.lifespanSource?.label ?? null,   // من أين جاءت سنة الوفاة
   };
 }
 
-/** يعيد السجلّ إلى الشكل الذي تعرفه بقية البرنامج. */
+/**
+ * يعيد السجلّ إلى الشكل الذي تعرفه بقية البرنامج.
+ * ★ العصر والميلاديّ والرابط تُشتقّ هنا لا تُخزَّن ★ — فهي محسوبةٌ من سنة
+ * الوفاة ورقمَي الكتاب والصفحة، وتخزينُها يُضخّم الفهرس بلا فائدة.
+ */
 export function fromRecord(rec) {
+  const death = rec.d ?? null;
   return {
     text: rec.t,
     sadr: String(rec.t).split(' ... ')[0] ?? rec.t,
     ajz: String(rec.t).split(' ... ')[1] ?? '',
     poet: rec.p ?? null,
-    deathYear: rec.d ?? null,
+    deathYear: death,
+    deathYearGregorian: death ? hijriToGregorian(death) : null,
+    era: eraOf(death),
+    lifespanSource: rec.l ? { kind: 'index', label: rec.l } : null,
     register: rec.r ? 'nabati' : 'fasih',
     source: {
       kind: 'index',
@@ -93,6 +119,8 @@ export function fromRecord(rec) {
       bookId: rec.k ?? null,
       pageId: rec.q ?? null,
       category: rec.c ?? null,
+      url: shamelaUrl(rec.k, rec.q),
+      urlNote: 'رابطٌ إلى الشاملة على الشبكة — يقطع بالكتاب ويقارب في الصفحة.',
     },
   };
 }
@@ -147,7 +175,9 @@ export function verseBucketOf(id) {
  * `proximity` يحاكي بحث الشاملة بالتقارب: لا يكفي وقوعُ الكلمات في البيت،
  * بل تقارُبُها فيه — والبيت قصيرٌ أصلًا، فهو قيدٌ لطيف.
  */
-export async function searchIndex(query, load, { limit = 20, proximity = 12 } = {}) {
+export async function searchIndex(query, load, { limit = 20, proximity = 12, excludeVerse = null } = {}) {
+  // ★ البيت الذي سألتَ به ليس موافقةً له. ★ كان الفهرس يُعيده جوابًا لنفسه.
+  const excludeFp = excludeVerse ? fingerprint(excludeVerse) : null;
   const terms = indexTokens(query);
   if (!terms.length) return { verses: [], terms: [], scanned: 0 };
 
@@ -193,6 +223,7 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12 } = 
   for (const [id, hits] of candidates) {
     const rec = stores.get(verseBucketOf(id))?.[id];
     if (!rec) continue;
+    if (excludeFp && fingerprint(rec.t) === excludeFp) continue;
     if (!withinProximity(rec.t, terms, proximity)) continue;
     out.push({ ...fromRecord(rec), matchedTerms: hits });
     if (out.length >= limit) break;
@@ -204,9 +235,14 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12 } = 
 /** أتقع كلماتُ البحث متقاربةً في البيت؟ */
 export function withinProximity(text, terms, distance) {
   const words = normalize(text).split(' ');
-  const positions = terms
-    .map((t) => words.indexOf(t))
-    .filter((i) => i !== -1);
+  const bare = words.map(stripPrefixes);
+  const find = (t) => {
+    const i = words.indexOf(t);
+    if (i !== -1) return i;
+    const j = bare.indexOf(stripPrefixes(t));
+    return j;
+  };
+  const positions = terms.map(find).filter((i) => i !== -1);
   if (positions.length < 2) return positions.length >= 1;
   return Math.max(...positions) - Math.min(...positions) <= distance;
 }

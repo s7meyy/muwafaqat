@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalize, fingerprint, toArabicDigits } from '../core/normalize.js';
+import { normalize, fingerprint, toArabicDigits, isMostlyArabic } from '../core/normalize.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses, poetFromBookName, readAttributionLine } from '../core/attribution.js';
 import { gate } from '../core/verify.js';
@@ -30,6 +30,8 @@ import { detectRegister } from '../core/register.js';
 import { poetFromWebPage } from '../core/attribution.js';
 import { isPrivateAddress, assertPublicUrl } from '../bridge/fetch-page.js';
 import { collectFromWeb } from '../bridge/web.js';
+import { splitVerses, looksArabic } from '../core/input.js';
+import { shamelaUrl } from '../core/trust.js';
 import { buildIndex, searchIndex, indexTokens, bucketOf, verseBucketOf,
   TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord } from '../core/verse-index.js';
 
@@ -413,6 +415,67 @@ ok('والعامّة تُقبل', !isPrivateAddress('8.8.8.8') && !isPrivateAddr
   eq('ويعود إلى شكله المعروف', fromRecord(rec).source.bookName, 'علم المعاني');
   eq('بشطرَيه', fromRecord(rec).ajz, 'ولكن تؤخذ الدنيا غلابا');
 }
+
+// ── ما كشفته جولةُ المستخدم ───────────────────────────────────────────────
+// كلُّ اختبارٍ هنا يحرس عيبًا وقع فعلًا في الجولة، لا عيبًا متخيَّلًا.
+
+// (١) الدواوين مشكولة، وكانت عربيّتُها تُرفض
+ok('★ البيت المشكول كاملًا عربيّ',
+  isMostlyArabic('فَجِئْتُ وَقَدْ نَضَّتْ لنَومٍ ثيابَها'),
+  'التشكيل كان يُحسب محارف غير عربية، فيُسقَط أكثرُ شعر الدواوين صامتًا');
+ok('واللاتينيّ يبقى مرفوضًا', !isMostlyArabic('see Journal of Arabic Literature vol 3'));
+eq('والبيت المشكول يُقتنص',
+  extractVerses('٢٨ - فَجِئْتُ وَقَدْ نَضَّتْ لنَومٍ ثيابَها ... لَدَى السِّتْر إلّا لِبْسَةَ الْمُتَفَضِّلِ').length, 1);
+ok('★ وترقيم المحقّق لا يدخل نصّ البيت',
+  !extractVerses('٣١ - فقالتْ يَمينَ الله ما لكَ حيلَةٌ ... وَما إنْ أرى عنكَ الغَوايةَ تَنْجلي')[0].text.startsWith('٣١'));
+
+// (٢) شاهدٌ داخل ديوان ليس من شعر صاحبه
+{
+  const page = 'وإن في قوله وما إن زائدة ومنه قول الشاعر:\n'
+    + 'وما إن طِبُّنا جبن ولكن ... منايانا ودولة آخرينا\n'
+    + '٣٢ - خَرَجْتُ بها أمشي تَجُرّ وراءَنا ... على أَثَرَيْنَا ذَيْلَ مِرْطٍ مُرَحَّلِ';
+  const v = attributeVerses(page, extractVerses(page), { bookName: 'ديوان امرئ القيس ت المصطاوي' });
+  eq('★ «قول الشاعر:» لا يُملأ بقائل الديوان', v[0].poet, null);
+  eq('★ والجهل لا يسري إلى البيت المرقَّم بعده', v[1].poet, 'امرئ القيس');
+  eq('لأن المحقّق يرقّم أبيات صاحبه لا الشواهد', v[1].poetSource, 'book-numbered');
+}
+eq('★ علامةُ المحقّق تُقطع من اسم الشاعر',
+  poetFromBookName('ديوان امرئ القيس ت المصطاوي'), 'امرئ القيس');
+eq('وكذلك «بشرح فلان»', poetFromBookName('ديوان جرير بشرح محمد بن حبيب'), 'جرير');
+
+// (٣) الأبيات المتعددة كانت تُبحث نصًّا واحدًا فتُخفق
+eq('بيتٌ واحد', splitVerses('صدر ... عجز').length, 1);
+eq('★ شطران في سطرين = بيتٌ واحد لا بيتان',
+  splitVerses('وما نيل المطالب بالتمني\nولكن تؤخذ الدنيا غلابا').length, 1);
+eq('وثلاثة أبياتٍ بفواصل = ثلاثة', splitVerses('أ ... ب\nج ... د\nهـ ... و').length, 3);
+eq('وأربعةُ أشطرٍ = بيتان', splitVerses('شطر اول\nشطر ثان\nشطر ثالث\nشطر رابع').length, 2);
+ok('★ و«ليس بيتًا عربيًّا» جوابٌ غيرُ «لا نتيجة»',
+  !looksArabic('Hello world') && !looksArabic('؟؟؟') && looksArabic('وما نيل المطالب'));
+
+// (٤) البيت كان يعود جوابًا لنفسه، ولا رابط، ولا تأريخ
+{
+  const sample = [{ text: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', poet: 'شوقي',
+    deathYear: 1351, lifespanSource: { label: 'الأعلام للزركلي' },
+    source: { bookName: 'علم المعاني', printedPage: '66', bookId: 17670, pageId: 60 } }];
+  const ix = buildIndex(sample);
+  const load = async (k, b) => (k === 'tokens' ? ix.tokens.get(b) : ix.store.get(b)) ?? {};
+  eq('★ البيت لا يعود جوابًا لنفسه',
+    (await searchIndex('المطالب التمني', load, { excludeVerse: sample[0].text })).verses.length, 0);
+  const got = (await searchIndex('المطالب التمني', load)).verses[0];
+  eq('★ والعصر يُشتقّ في الفهرس — كانت البطاقة تقول «عصره غير معروف»', got.era?.name, 'حديث ومعاصر');
+  eq('والميلاديّ معه', got.deathYearGregorian, 1932);
+  eq('★ وللمصدر رابطٌ يُفتح', got.source.url, 'https://shamela.ws/book/17670/60');
+  ok('موسومًا بحدّه', /يقارب/.test(got.source.urlNote));
+  eq('وسندُ التأريخ يُذكر', got.lifespanSource?.label, 'الأعلام للزركلي');
+
+  // (٥) السوابق: «التمني» كانت لا تجد «بالتمني»
+  ok('★ السابقة الملتصقة تُجرَّد', indexTokens('بالتمني').includes('تمني'));
+  for (const query of ['التمني غلابا', 'بالتمني الدنيا', 'تمني مطالب', 'المطالب دنيا']) {
+    ok(`ويجد «${query}»`, (await searchIndex(query, load)).verses.length === 1);
+  }
+}
+eq('ورابط الكتاب بلا صفحة', shamelaUrl(17670), 'https://shamela.ws/book/17670');
+eq('ولا رابط بلا كتاب', shamelaUrl(null), null);
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
 const line = '─'.repeat(52);

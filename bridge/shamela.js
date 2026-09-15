@@ -12,7 +12,7 @@ import { attributeVerses } from '../core/attribution.js';
 import { gate } from '../core/verify.js';
 import { dedupe } from '../core/dedupe.js';
 import { eraOf } from '../core/eras.js';
-import { TRUST } from '../core/trust.js';
+import { TRUST, shamelaUrl } from '../core/trust.js';
 import { detectRegister } from '../core/register.js';
 import { normalize, fingerprint } from '../core/normalize.js';
 import { similarity } from '../core/dedupe.js';
@@ -116,6 +116,10 @@ export class Shamela {
             pageId: hit.page_id,
             printedPage: hit.printed_page,
             citation: ctx.citations.get(docId),
+            // ★ رابطٌ للتأكّد — طلبٌ صريح. يُبنى من رقمَي الكتاب والصفحة،
+            //   ويُعرض موسومًا لأن ترقيم الموقع قد يخالف ترقيم النسخة المحلّية.
+            url: shamelaUrl(hit.book_id, hit.page_id),
+            urlNote: 'رابطٌ إلى الشاملة على الشبكة — يقطع بالكتاب ويقارب في الصفحة.',
           },
         });
       }

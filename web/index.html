@@ -60,8 +60,15 @@
     <label class="check" for="use-council">
       <input type="checkbox" id="use-council" checked>
       <span>استعن بمجلس النماذج</span>
+      <span class="hint" id="council-hint"></span>
     </label>
     <span class="hint" id="hint"></span>
+  </div>
+
+  <div id="saved-bar" class="saved-bar" hidden>
+    <span>محفوظاتك: <strong id="saved-count"></strong></span>
+    <button type="button" id="export-saved" class="linkish">صدّرها ملفًّا</button>
+    <button type="button" id="clear-saved" class="linkish quiet">امسحها</button>
   </div>
 
   <section id="council" class="council" hidden>

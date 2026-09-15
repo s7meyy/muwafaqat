@@ -141,3 +141,25 @@ button{min-height:44px}
 .caveat{margin:8px 0 0;font-size:.88rem;color:var(--warn);line-height:1.9}
 .badge.t-nabati{color:var(--info)}
 #filter-note{color:var(--muted);font-size:.86rem;margin-top:8px;text-align:center}
+
+/* ── أزرار البطاقة ── */
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.actions button{
+  background:transparent;color:var(--accent);border:1px solid var(--line);
+  border-radius:9px;padding:8px 16px;font-size:.92rem;min-height:44px;
+}
+.actions button:hover{border-color:var(--accent);background:var(--accent-soft)}
+.actions button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.actions button.quiet{color:var(--muted)}
+.actions button.quiet:hover{color:var(--danger);border-color:var(--danger);background:transparent}
+
+/* ── شريط المحفوظات ── */
+.saved-bar{
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:14px;
+  padding:10px 16px;border:1px solid var(--line);border-radius:12px;background:var(--accent-soft);
+}
+.saved-bar strong{color:var(--accent)}
+.status.warn{color:var(--warn)}
+#council-hint{margin-inline-start:4px}
+.tabs button:disabled{opacity:.4;cursor:not-allowed}
+.check input:disabled + span{opacity:.5}

@@ -17,6 +17,7 @@ import { extractVerses } from '../core/verses.js';
 import { attributeVerses } from '../core/attribution.js';
 import { POETRY_CATEGORIES } from '../bridge/shamela.js';
 import { toArabicDigits } from '../core/normalize.js';
+import { Biography } from '../bridge/biography.js';
 
 const args = parseArgs(process.argv.slice(2));
 const OUT = args.out ?? 'index/verses.jsonl';
@@ -43,6 +44,8 @@ function saveState(s) {
   fs.mkdirSync(path.dirname(STATE), { recursive: true });
   fs.writeFileSync(STATE, JSON.stringify(s, null, 2));
 }
+
+const NO_DATES = Boolean(args.noDates);
 
 const client = new McpStdioClient({
   command: process.env.SHAMELA_MCP_CMD || 'shamela-mcp',
@@ -82,6 +85,12 @@ async function* pagesOf(bookId) {
   }
 }
 
+// ★ سنةُ الوفاة تُستخرج مع البيت لا بعده. ★
+// الفهرس الساكن لا خادمَ خلفه يسأل عن التراجم وقت البحث، فإن لم تُخزَّن السنة
+// هنا ظهرت كلُّ بطاقةٍ في الموقع بـ«عصره غير معروف» — وهو نقضٌ لأصل المشروع.
+// والطلبُ يُكرَّر للشاعر مرّةً واحدةً مهما تكرّر اسمه (Biography يخزّن).
+const biography = new Biography(client);
+
 async function main() {
   const state = loadState();
   const done = new Set(state.doneBooks);
@@ -104,8 +113,11 @@ async function main() {
       if (!body) continue;
       const found = attributeVerses(body, extractVerses(body), { bookName: book.book_name });
       for (const v of found) {
+        const life = (!NO_DATES && v.poet) ? await biography.deathYearOf(v.poet) : null;
         sink.write(JSON.stringify({
           text: v.text, poet: v.poet, poetSource: v.poetSource,
+          deathYear: life?.deathYear ?? null,
+          lifespanSource: life?.source ? { label: life.source.label } : null,
           source: {
             bookId: book.book_id, bookName: book.book_name, bookAuthor: book.author_name,
             category: book.category ?? book.category_id, pageId: page.page_id, printedPage: page.printed_page,
@@ -123,7 +135,9 @@ async function main() {
   }
 
   sink.end();
-  log(`تمّ. ${toArabicDigits(String(state.verses))} بيتًا من ${toArabicDigits(String(state.pages))} صفحة ← ${OUT}`);
+  const dated = biography.cache ? [...biography.cache.values()].filter(Boolean).length : 0;
+  log(`تمّ. ${toArabicDigits(String(state.verses))} بيتًا من ${toArabicDigits(String(state.pages))} صفحة`
+    + ` · عُرفت وفياتُ ${toArabicDigits(String(dated))} شاعرًا ← ${OUT}`);
   client.stop();
 }
 

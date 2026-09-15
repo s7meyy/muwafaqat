@@ -29,6 +29,7 @@ async function readVerses(file) {
     try {
       const v = JSON.parse(line);
       v.register = detectRegister(v.text).register;
+      // deathYear وlifespanSource يأتيان من الاستخراج كما هما
       out.push(v);
     } catch { /* سطرٌ معطوب يُتخطّى */ }
   }

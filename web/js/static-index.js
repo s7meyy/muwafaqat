@@ -29,7 +29,7 @@ async function loadShard(kind, bucket) {
 }
 
 /** يبحث في الفهرس الساكن. يُرجع الشكل نفسه الذي يُرجعه الجسر. */
-export async function searchStatic(query, { limit = 20 } = {}) {
+export async function searchStatic(query, { limit = 20, excludeVerse = null } = {}) {
   const meta = await indexMeta();
   if (!meta) {
     const e = new Error('لا فهرس ساكنٌ منشور');
@@ -37,7 +37,7 @@ export async function searchStatic(query, { limit = 20 } = {}) {
     throw e;
   }
 
-  const { verses, scanned } = await searchIndex(query, loadShard, { limit });
+  const { verses, scanned } = await searchIndex(query, loadShard, { limit, excludeVerse: excludeVerse ?? query });
   return {
     query,
     verses: verses.map((v) => ({

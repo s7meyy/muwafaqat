@@ -60,3 +60,19 @@ export function siteNameOf(url) {
 export function byTrust(a, b) {
   return (TRUST[b?.trust]?.rank ?? 0) - (TRUST[a?.trust]?.rank ?? 0);
 }
+
+// ── روابط المصادر ──────────────────────────────────────────────────────────
+
+/**
+ * رابطُ صفحةِ الكتاب على «الشاملة» على الشبكة.
+ *
+ * ★ يُبنى من رقم الكتاب ورقم الصفحة في نسختك المحلّية. ★ وترقيمُ الموقع قد
+ * يخالف ترقيم نسختك في بعض الكتب، فالرابط يقطع بالكتاب ويقارب في الصفحة.
+ * ولهذا يُعرض موسومًا: «افتح في الشاملة» لا «هذا هو المصدر».
+ */
+export function shamelaUrl(bookId, pageId) {
+  if (!bookId) return null;
+  return pageId
+    ? `https://shamela.ws/book/${bookId}/${pageId}`
+    : `https://shamela.ws/book/${bookId}`;
+}
