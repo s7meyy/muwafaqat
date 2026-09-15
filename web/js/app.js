@@ -340,7 +340,9 @@ installApproval({
   onUnapproved: () => { imageApproved = false; refreshSearchButton(); },
 });
 
-$('export-saved')?.addEventListener('click', () => downloadText('الموافقات-المحفوظات.txt', exportText()));
+// اسمُ الملف لاتينيٌّ عمدًا: بعض المتصفّحات تُسقط الاسم العربيّ فيصير «download»
+// بلا امتداد، فلا يُفتح بنقرة. والمحتوى عربيٌّ كما هو.
+$('export-saved')?.addEventListener('click', () => downloadText('muwafaqat-saved.txt', exportText()));
 $('clear-saved')?.addEventListener('click', () => {
   if (confirm('تُحذف المحفوظات كلها. أمتأكّد؟')) { saved.clear(); refreshSavedBar(); renderVerses(); }
 });

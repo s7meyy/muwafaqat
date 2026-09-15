@@ -49,11 +49,21 @@ function undoLamPrefix(word) {
   return word;
 }
 
+// ما لا يقع في اسم شاعرٍ قطّ: علامات اقتباسٍ أو ترقيمٍ داخليّ أو أرقام.
+// ★ أول تشغيلٍ حقيقيٍّ أخرج هذه «أسماء»: ★
+//   «"ألستم" أراد: أنتم» · «أم حزرة وبنيها، وأتيت» · «في كلمته» · «يمدح عبد الملك»
+// وكلُّها نثرٌ التقطته الأداة، فنُسب إليه الشعر وأُرِّخ بوفاةِ من ليس منه.
+const NOT_A_NAME = /["«»:؛،\(\)\[\]]|[\u0660-\u06690-9]/;
+
 function cleanName(raw) {
   let name = stripDiacritics(raw).trim();
   name = name.replace(/^[\s:،؛\-]+/, '').replace(/[\s:،؛\.]+$/, '');
   const stop = NAME_STOP.exec(' ' + name);
+  // ★ الوقوف عند أوّل الكلام معناه أن ما بعد الأداة فعلٌ أو ظرفٌ لا اسم ★
+  //   («يمدح عبد الملك…» و«في كلمته») — فيُرفض كلُّه ولا يُقتصّ منه اسم.
+  if (stop && stop.index === 0) return null;
   if (stop && stop.index > 0) name = name.slice(0, stop.index).trim();
+  if (NOT_A_NAME.test(name)) return null;
   const words = name.split(/\s+/).filter(Boolean).slice(0, MAX_NAME_WORDS);
   name = words.join(' ').replace(/[\s:،؛\.]+$/, '');
   if (normalize(name).length < 3) return null;
@@ -174,6 +184,12 @@ export function attributeVerses(pageText, verses, { bookName } = {}) {
   }
 
   const bookPoet = poetFromBookName(bookName);
+
+  // ★ إن كان الكتاب يرقّم أبيات صاحبه، فغيرُ المرقَّم ليس منها. ★
+  //   «يترك ما رقّح من عيشه…» شاهدٌ في شرح البيت، وكان يُنسب إلى جرير
+  //   ويُؤرَّخ بوفاته. والسكوت عن قائلٍ مجهول أصدقُ من نسبته إلى غير أهله.
+  const bookNumbers = verses.some((v) => v.numbered);
+
   let current = null;        // { name } أو null للمجهول
   let currentSource = null;
   const result = [];
@@ -202,14 +218,14 @@ export function attributeVerses(pageText, verses, { bookName } = {}) {
         // ★ لكنّ الجهل لا يسري: ★ البيت المرقَّم بعده من شعر صاحب الديوان،
         //   فالمحقّق يرقّم أبياته ولا يرقّم الشواهد. ولولا هذا لصار نصفُ الديوان
         //   «غير معروف» لأن شاهدًا واحدًا ورد في شرح بيتٍ قبله.
-        const ownVerse = v.numbered && bookPoet;
+        const ownVerse = bookPoet && (bookNumbers ? v.numbered : true);
         if (ownVerse && currentSource === 'anonymous') { current = null; currentSource = null; }
         const anonymous = !ownVerse && currentSource === 'anonymous';
         result.push({
           ...v,
-          poet: current ?? (anonymous ? null : bookPoet) ?? null,
+          poet: current ?? (anonymous || !ownVerse ? null : bookPoet) ?? null,
           poetSource: current ? currentSource
-            : (anonymous ? 'anonymous' : (bookPoet ? (v.numbered ? 'book-numbered' : 'book') : null)),
+            : (anonymous ? 'anonymous' : (ownVerse ? (v.numbered ? 'book-numbered' : 'book') : null)),
         });
       }
     }

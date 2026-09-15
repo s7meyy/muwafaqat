@@ -46,7 +46,7 @@ export function verseToText(v) {
   parts.push(`— ${who}${life}`);
   const s = v.source ?? {};
   const where = s.bookName
-    ? `${s.bookName}${s.printedPage ? `، ص ${s.printedPage}` : ''}`
+    ? `${s.bookName}${s.printedPage ? `، ص ${toArabicDigits(String(s.printedPage))}` : ''}`
     : (s.siteName ?? '');
   if (where) parts.push(where);
   if (s.url) parts.push(s.url);
