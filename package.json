@@ -1,0 +1,11 @@
+{
+  "name": "muwafaqat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "الموافقات — أدخل بيتًا، تخرج أبياتٌ توافقه في المعنى، كلٌّ بقائله وعصره ومصدره",
+  "scripts": {
+    "bridge": "node bridge/server.js",
+    "test": "node tests/run.js"
+  }
+}

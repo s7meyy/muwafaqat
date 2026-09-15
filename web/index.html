@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>الموافقات</title>
+<meta name="description" content="أدخل بيتًا، تخرج أبياتٌ توافقه في المعنى — كلٌّ بقائله وعصره ومصدره.">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <h1>الموافقات</h1>
+  <p class="sub">أدخِل بيتًا — تخرج أبياتٌ توافقه في المعنى، كلٌّ بقائله وعصره ومصدره.</p>
+</header>
+
+<main>
+  <section class="box" id="input-box">
+    <label for="q">البيت</label>
+    <textarea id="q" rows="3" placeholder="وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="search" type="button">ابحث عن الموافقات</button>
+      <span class="hint" id="hint"></span>
+    </div>
+  </section>
+
+  <section id="status" class="status" hidden></section>
+  <section id="results" class="results"></section>
+</main>
+
+<footer class="foot">
+  <p>لا يُعرض بيتٌ إلا وُجد نصُّه في مصدرٍ حقيقيّ. وما لم يُوجد — لا يُعرض.</p>
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
