@@ -10,6 +10,7 @@ import http from 'node:http';
 import { loadConfig } from './config.js';
 import { Shamela, POETRY_CATEGORIES } from './shamela.js';
 import { transcribeImage, availableProviders } from './transcribe.js';
+import { councilSize } from './council.js';
 
 const config = loadConfig();
 const shamela = new Shamela({
@@ -72,6 +73,7 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, {
       ok: true, service: 'muwafaqat-bridge',
       transcribers: availableProviders(),   // تعرف الواجهة أتقدر على الصور أم لا
+      council: councilSize(),               // وكم عضوًا في مجلس النماذج
     }, corsOrigin);
   }
 
@@ -101,8 +103,24 @@ const server = http.createServer(async (req, res) => {
         distance: b.distance ?? 10,
         limit: Math.min(Number(b.limit ?? 20), 50),
         categories: b.categories ?? POETRY_CATEGORIES,
+        excludeVerse: b.excludeVerse ?? b.query,
       });
       return send(res, 200, out, corsOrigin);
+    }
+
+    // ★ مجلس النماذج: بيتٌ يدخل، فيقترح كلُّ نموذجٍ مدخلًا للمعنى، ثم تُبحث به الشاملة
+    if (url.pathname === '/v1/council' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (!b.query) return send(res, 400, { error: 'query مطلوب' }, corsOrigin);
+      try {
+        const out = await shamela.council(b.query, process.env, {
+          queryLimit: Math.min(Number(b.queryLimit ?? 14), 24),
+          pageBudget: Math.min(Number(b.pageBudget ?? 60), 120),
+        });
+        return send(res, 200, out, corsOrigin);
+      } catch (e) {
+        return send(res, e.code === 'NO_COUNCIL' ? 501 : 500, { error: e.message, code: e.code }, corsOrigin);
+      }
     }
 
     // تفريغ صورة — والنتيجة اقتراحٌ لا يُبحث به حتى يعتمده المستخدم بيده

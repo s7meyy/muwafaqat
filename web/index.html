@@ -57,8 +57,19 @@
 
   <div class="row search-row">
     <button id="search" type="button">ابحث عن الموافقات</button>
+    <label class="check" for="use-council">
+      <input type="checkbox" id="use-council" checked>
+      <span>استعن بمجلس النماذج</span>
+    </label>
     <span class="hint" id="hint"></span>
   </div>
+
+  <section id="council" class="council" hidden>
+    <h2>كيف فُهم بيتك، وبمَ بُحث</h2>
+    <div id="council-meanings" class="meanings"></div>
+    <div id="council-queries" class="chips"></div>
+    <p id="council-note" class="hint"></p>
+  </section>
 
   <section id="status" class="status" hidden></section>
   <section id="results" class="results"></section>

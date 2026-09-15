@@ -51,6 +51,9 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | `GEMINI_MODEL` | `gemini-2.5-flash` | غيّره إن تبدّل اسم النموذج |
 | `OPENROUTER_API_KEY` | — | التفريغ المُقابِل — به تُكشف مواضع الشكّ |
 | `OPENROUTER_VISION_MODEL` | `qwen/qwen2.5-vl-72b-instruct:free` | نموذجٌ بصريٌّ مجاني |
+| `OPENROUTER_MODELS` | خمسةُ نماذجَ مجانية | أعضاء المجلس، مفصولين بفاصلة |
+| `GROQ_API_KEY` / `GROQ_MODEL` | — | عضوٌ سريعٌ في المجلس |
+| `GEMINI_TEXT_MODEL` | `gemini-2.5-flash` | عضو المجلس من جوجل |
 
 **بلا مفتاحٍ للتفريغ** يعمل كل شيءٍ آخر، و`/v1/transcribe` يردّ `501` بسببٍ مكتوب،
 وتبويب الصورة في الموقع يقول ما ينقصه بدل أن ينكسر.
@@ -63,6 +66,7 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | `GET /v1/health` | حال المكتبة: عدد الكتب والصفحات المفهرسة |
 | `POST /v1/search` | بحثٌ خام: `{query, mode:'near'\|'phrase'\|'words', distance, limit, categories}` |
 | **`POST /v1/verses`** | **الأهمّ** — استعلامٌ يدخل، أبياتٌ موثَّقةٌ تخرج |
+| **`POST /v1/council`** | **مجلس النماذج** — بيتٌ يدخل، ومداخلُ المعنى تُبحث كلها |
 | `POST /v1/transcribe` | تفريغ صورة بنموذجين: `{image (base64), mimeType}` |
 | `POST /v1/page` | نصّ صفحة: `{book_id, page_id}` |
 

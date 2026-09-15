@@ -17,8 +17,11 @@ import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
 import { parseLifespan, findLifespanFor } from '../core/lifespan.js';
 import { Shamela } from '../bridge/shamela.js';
 import { diffTranscripts, disagreementCount, agreementRatio, proposedText } from '../core/transcript.js';
-import { countLabel, VERSE, PAGE } from '../core/plural.js';
+import { countLabel, VERSE, PAGE, MATCHED_VERSE } from '../core/plural.js';
 import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
+import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
+import { expand, councilSize } from '../bridge/council.js';
+import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -169,6 +172,10 @@ eq('القلّة ٣-١٠', countLabel(7, VERSE), '٧ أبيات');
 eq('★ الكثرة ١١+ تُنصب مفردًا', countLabel(11, VERSE), '١١ بيتًا');
 eq('والمئة مفردٌ مجرور', countLabel(100, VERSE), '١٠٠ بيت');
 eq('والصفحة كذلك', countLabel(2, PAGE), 'صفحتان');
+eq('★ الصفة تتبع العدد: المثنّى', countLabel(2, MATCHED_VERSE), 'بيتان موافقان');
+eq('★ والقلّة', countLabel(3, MATCHED_VERSE), '٣ أبياتٍ موافقة');
+eq('★ والكثرة', countLabel(11, MATCHED_VERSE), '١١ بيتًا موافقًا');
+eq('★ والمفرد', countLabel(1, MATCHED_VERSE), 'بيتٌ واحدٌ موافق');
 
 // ── مقارنة التفريغين ──────────────────────────────────────────────────────
 {
@@ -202,6 +209,63 @@ eq('بلا مفاتيح لا مزوّد', availableProviders({}).length, 0);
   let code = null;
   try { await transcribeImage({ imageBase64: 'x' }, {}); } catch (e) { code = e.code; }
   eq('★ ويُصرَّح بالسبب لا يُصمَت عليه', code, 'NO_PROVIDER');
+}
+
+// ── تصفية استعلامات المجلس ────────────────────────────────────────────────
+eq('استعلامٌ صالح', rejectReason('المطالب التمني'), null);
+eq('★ البيت المدسوس مكان استعلامٍ يُرفض',
+  rejectReason('وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا'), 'LOOKS_LIKE_VERSE');
+eq('اللاتينية تُرفض', rejectReason('effort and will'), 'NOT_ARABIC');
+eq('★ حروف المعاني وحدها لا تصلح استعلامًا', rejectReason('من في على'), 'STOPWORDS_ONLY');
+eq('والإطالة تُفقر البحث بالتقارب', rejectReason('السعي والجد وبلوغ المعالي بالكد'), 'TOO_LONG');
+eq('الفارغ', rejectReason('   '), 'EMPTY');
+
+{
+  const m = mergeQueries([
+    { model: 'a', queries: [{ text: 'المطالب التمني' }, { text: 'السعي المجد' }] },
+    { model: 'b', queries: [{ text: 'المطالب التمني' }, { text: 'الجد والاجتهاد' }] },
+    { model: 'c', queries: [{ text: 'المطالب التمني' }, { text: 'السعي المجد' }] },
+  ]);
+  eq('المكرَّر يُدمج', m.queries.length, 3);
+  eq('★ ما اتفق عليه أكثرُ نموذجٍ يُقدَّم', m.queries[0].text, 'المطالب التمني');
+  eq('وتُذكر النماذج التي اقترحته', m.queries[0].models.length, 3);
+  eq('الحدُّ يُحترم', mergeQueries([{ model: 'a', queries: [{ text: 'طلب المعالي' }, { text: 'الجد والسعي' }] }], { limit: 1 }).queries.length, 1);
+}
+eq('JSON ملفوفٌ بسياج يُقرأ', parseModelJson('حسنًا:\n```json\n{"x":1}\n```')?.x, 1);
+eq('وردٌّ ليس JSON يُرجع null', parseModelJson('لا أستطيع'), null);
+
+// ── المجلس بأسوأ أعضائه ───────────────────────────────────────────────────
+eq('بلا مفاتيح لا مجلس', councilSize({}), 0);
+{
+  const restore = installFakeFetch();
+  try {
+    const verse = 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا';
+    const plan = await expand(verse, FAKE_ENV);
+    eq('ستّة أعضاء', councilSize(FAKE_ENV), 6);
+    ok('★ سقوط عضوين لا يُعطّل المجلس', plan.answered.length === 4 && plan.failed.length === 2);
+    ok('العضو المنقطع يُذكر باسمه', plan.failed.some((f) => /llama/.test(f.model)));
+    ok('والردُّ غير المفهوم كذلك', plan.failed.some((f) => /gemma/.test(f.model)));
+    ok('★ البيت الذي دسّه العضو العاصي رُفض ولم يُبحث به',
+      plan.rejected.some((r) => r.reason === 'LOOKS_LIKE_VERSE'),
+      'نموذجٌ خالف التعليمة وكتب شطرين مكان كلمات بحث');
+    ok('ولا بيت في الاستعلامات المقبولة',
+      !plan.queries.some((q) => /\.{3}|…/.test(q.text)));
+    eq('واتفاق ثلاثةٍ يتصدّر', plan.queries[0].models.length, 3);
+    ok('ويُعرض فهمُهم للمعنى', plan.meanings.length >= 3);
+
+    const { Shamela } = await import('../bridge/shamela.js');
+    const sh = new Shamela({ command: 'node', args: [path.join(here, 'fake-shamela-mcp.js')] });
+    try {
+      const out = await sh.council(verse, FAKE_ENV);
+      ok('المجلس يُرجع أبياتًا مرّت بالبوابة', out.verses.length > 0);
+      ok('★ والبيت المسؤول به لا يُعاد جوابًا لنفسه',
+        !out.verses.some((v) => v.text.includes('نيل المطالب')),
+        'البيت الذي سألتَ به ليس موافقةً له');
+      ok('وكل بيتٍ معه دليلُه', out.verses.every((v) => v.evidence?.documentId));
+      ok('والصفحة تُقرأ مرّةً واحدةً مهما تعدّدت الاستعلامات', out.pagesRead === 1);
+      ok('ويُذكر لكل مدخلٍ ماذا وجد', out.council.perQuery.every((q) => typeof q.found === 'number'));
+    } finally { sh.client.stop(); }
+  } finally { restore(); }
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

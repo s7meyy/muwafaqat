@@ -2,7 +2,8 @@
 // الصور وشاشة الاعتماد في المرحلة الثانية، وزرُّ البحث يبقى معطَّلًا حتى الاعتماد.
 
 import { toArabicDigits } from '../../core/normalize.js';
-import { countLabel, VERSE, PAGE, PLACE, SUGGESTION } from '../../core/plural.js';
+import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ } from '../../core/plural.js';
+import { toArabicDigits as ar } from '../../core/normalize.js';
 import { install as installApproval } from './approve.js';
 
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
@@ -54,6 +55,10 @@ function card(v) {
     : escape(s.siteName ?? 'مصدر');
   const link = s.url ? ` · <a href="${escape(s.url)}" target="_blank" rel="noopener">افتح المصدر ↗</a>` : '';
   const occurrences = v.occurrences > 1 ? ` · ورد في ${countLabel(v.occurrences, PLACE)}` : '';
+  // ★ البيت الذي بلغته عدّةُ مداخلَ للمعنى أقربُ موافقةً من بيتٍ بلغه مدخلٌ واحد
+  const via = v.matchedQueries?.length > 1
+    ? `<p class="src">بلغته ${ar(String(v.matchedQueries.length))} مداخلَ للمعنى: ${v.matchedQueries.map(escape).join(' · ')}</p>`
+    : '';
 
   // سنة الوفاة لها مصدرٌ أيضًا — ويُعرض اسم الترجمة التي جاءت منها ليُرى إن أخطأت
   const ls = v.lifespanSource;
@@ -71,8 +76,39 @@ function card(v) {
       <span class="badge ${trust.cls}">${trust.label}</span>
     </div>
     <p class="src">${where}${link}${occurrences}</p>
-    ${dated}`;
+    ${dated}
+    ${via}`;
   return el;
+}
+
+const MODEL = { zero:'لا نموذج', one:'نموذجٌ واحد', two:'نموذجان',
+  few:'# نماذج', many:'# نموذجًا', other:'# نموذج' };
+
+/** يعرض كيف فُهم البيت وبمَ بُحث — فالمستخدم يرى مدخل البحث لا نتيجته فقط. */
+function renderCouncil(c) {
+  const panel = $('council');
+  if (!c) { panel.hidden = true; return; }
+  panel.hidden = false;
+
+  const seen = new Set();
+  $('council-meanings').innerHTML = (c.meanings ?? [])
+    .filter((m) => { const k = m.meaning.trim(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .map((m) => `<p>«${escape(m.meaning)}» <span class="who">— ${escape(m.model.split('/').pop())}</span></p>`)
+    .join('') || '<p class="who">لم يصف أحدٌ منهم المعنى.</p>';
+
+  $('council-queries').innerHTML = (c.perQuery ?? c.queries ?? []).map((q) => {
+    const agreed = (q.models?.length ?? 1) > 1;
+    const empty = q.found === 0;
+    const cls = ['chip', agreed ? 'agreed' : '', empty ? 'empty' : ''].filter(Boolean).join(' ');
+    const n = agreed ? `<span class="n">${ar(String(q.models.length))} نماذج</span>` : '';
+    const title = empty ? 'لم يجد هذا المدخل شيئًا' : `وجد ${q.found ?? 0}`;
+    return `<span class="${cls}" title="${escape(title)}">${escape(q.text)}${n}</span>`;
+  }).join('');
+
+  const parts = [`استشير ${countLabel(c.members?.length ?? 0, MODEL)}، أجاب منهم ${ar(String(c.answered?.length ?? 0))}`];
+  if (c.failed?.length) parts.push(`وسقط ${ar(String(c.failed.length))}`);
+  if (c.rejected?.length) parts.push(`ورُفض ${ar(String(c.rejected.length))} من اقتراحاتهم (بيتٌ مدسوس أو كلامٌ لا يصلح للبحث)`);
+  $('council-note').textContent = parts.join('، ') + '.';
 }
 
 async function search() {
@@ -83,23 +119,37 @@ async function search() {
   results.replaceChildren();
   setStatus('يبحث في المصادر…');
 
+  const useCouncil = $('use-council')?.checked;
+  $('council').hidden = true;
+
   try {
-    const res = await fetch(`${BRIDGE}/v1/verses`, {
+    const endpoint = useCouncil ? '/v1/council' : '/v1/verses';
+    const res = await fetch(`${BRIDGE}${endpoint}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) },
-      body: JSON.stringify({ query, mode: 'near', distance: 10, limit: 20 }),
+      body: JSON.stringify(useCouncil ? { query } : { query, mode: 'near', distance: 10, limit: 20 }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `خطأ ${res.status}`);
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data.code === 'NO_COUNCIL') {
+        setStatus('لم يُضبط نموذجٌ للمجلس بعد. أُعيد البحث بكلماتك وحدها…');
+        $('use-council').checked = false;
+        return search();
+      }
+      throw new Error(data.error ?? `خطأ ${res.status}`);
+    }
+    if (data.council) renderCouncil(data.council);
 
     if (!data.verses?.length) {
-      setStatus(`لم يُوجد بيتٌ موافق — ${countLabel(data.pagesRead ?? 0, PAGE)} قُرئت. جرّب كلماتٍ أخرى من معنى البيت.`);
+      setStatus(`لم يُوجد بيتٌ موافق — قُرئت ${countLabel(data.pagesRead ?? 0, PAGE)}.${
+        useCouncil ? ' جرّب صياغةً أخرى للبيت.' : ' جرّب «مجلس النماذج» فهو أوسع مدخلًا.'}`);
       return;
     }
     const rejected = data.rejectedCount
       ? ` · ${countLabel(data.rejectedCount, SUGGESTION)} لم يثبت في مصدرٍ فلم يُعرض`
       : '';
-    setStatus(`${countLabel(data.verses.length, VERSE)} موافقًا، من ${countLabel(data.pagesRead, PAGE)}${rejected}`);
+    const budget = data.budgetExhausted ? ' · بلغ البحث حدَّ الصفحات، وقد يكون وراءه مزيد' : '';
+    setStatus(`${countLabel(data.verses.length, MATCHED_VERSE)} — ${countLabel(data.pagesRead, PAGES_READ)}${rejected}${budget}`);
     for (const v of data.verses) results.append(card(v));
   } catch (e) {
     setStatus(`تعذّر البحث: ${e.message}. تأكّد أن جسر الشاملة يعمل على جهازك.`, true);

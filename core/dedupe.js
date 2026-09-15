@@ -44,8 +44,13 @@ export function dedupe(verses, { threshold = 0.82 } = {}) {
     // نمثّل المجموعة بأوثق أعضائها: من عُرف قائله أولًا
     const best = g.members.find((m) => m.poet) ?? g.members[0];
     const poets = [...new Set(g.members.map((m) => m.poet).filter(Boolean))];
+    // ★ المداخل التي بلغت هذا البيت تُجمع من الأعضاء كلهم ★
+    //   بيتٌ بلغته ثلاثةُ مداخلَ للمعنى أقربُ موافقةً من بيتٍ بلغه واحد،
+    //   وأخذُ مداخل العضو الأوّل وحده يُضيّع هذه الإشارة.
+    const matchedQueries = [...new Set(g.members.flatMap((m) => m.matchedQueries ?? []))];
     return {
       ...best,
+      matchedQueries,
       sources: g.sources,
       variants: [...new Set(g.variants)],
       // ★ عند اختلاف المصادر في القائل لا نرجّح: نعرض الاثنين ★
