@@ -61,7 +61,10 @@ export function wordCount(text) {
 
 /** هل النصّ عربيٌّ في غالبه؟ يمنع أسطر الحواشي اللاتينية وأرقام الصفحات. */
 export function isMostlyArabic(text, threshold = 0.6) {
-  const chars = String(text ?? '').replace(/\s/g, '');
+  // ★ يُحذف التشكيل قبل القياس. ★ علاماته خارج مدى الحروف، فالبيت المشكول كاملًا
+  // — وهو حال الدواوين كلها — كانت تُحسب نصفُ محارفه «غير عربية» فتُرفض عربيّتُه
+  // ويُسقَط البيت صامتًا. «فَجِئْتُ وَقَدْ نَضَّتْ لنَومٍ ثيابَها» كانت تُقرأ ٤٧٪ عربية.
+  const chars = stripDiacritics(text).replace(/\s/g, '');
   if (!chars.length) return false;
   const arabic = (chars.match(/[ء-ي]/g) || []).length;
   return arabic / chars.length >= threshold;

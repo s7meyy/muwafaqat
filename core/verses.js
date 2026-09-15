@@ -20,6 +20,8 @@ const PROSE_BOUNDARY = /[:：«»"”“\)\(\]\[]|(?:^|\s)(?:قال|قوله|ك�
 // ما لا يكون في بيتٍ شعريّ أصلًا
 const NOT_VERSE = /(?:رحمه الله|صلى الله عليه|رضي الله عن|انظر|ينظر|تحقيق|الناشر|الطبعة|ص\s*\d|ج\s*\d|\d{3,})/;
 
+const NUMBER_PREFIX = /^\s*[\u0660-\u0669\u06F0-\u06F90-9]+\s*[-–—.)]\s*/;
+
 const MIN_WORDS = 2;
 const MAX_WORDS = 14;
 const BALANCE_MIN = 0.45; // نسبة كلمات الشطر الأقصر إلى الأطول
@@ -32,7 +34,10 @@ const MAX_SCAN = 220;     // أقصى ما نرجع إليه أو نمتدّ ب�
  * والقطع عند أول حدٍّ يُسقط كلمةً من شعر الشريف الرضي — وذاك نقصٌ في النقل لا يُحتمل.
  */
 function sadrCandidates(before) {
-  const tail = before.slice(-MAX_SCAN);
+  // ★ ترقيم المحقّق للأبيات جزءٌ من السطر لا من البيت. ★
+  //   «٣١ - فقالتْ: يَمينَ الله…» بيتُه يبدأ بـ«فقالت»، وإبقاءُ الرقم يُفسد
+  //   المطابقة مع رواية الكتاب الآخر، ويُظهر في البطاقة ما ليس من الشعر.
+  const tail = before.slice(-MAX_SCAN).replace(NUMBER_PREFIX, '');
   const cuts = [0];
   PROSE_BOUNDARY.lastIndex = 0;
   let m;
@@ -123,6 +128,9 @@ export function extractVerses(pageText) {
         column: Math.max(0, m.index - sadr.length), // موضع البيت في سطره — ما قبله نثرٌ لا شعر
         lineIndex,
         pairing: 'separator',
+        // ★ ترقيم المحقّق علامةٌ صادقة: في الديوان المحقَّق تُرقَّم أبياتُ صاحبه،
+        //   والشواهدُ المنقولة في الشرح لا تُرقَّم. وبه نفرّق بين شعره وشعر غيره.
+        numbered: NUMBER_PREFIX.test(line.slice(0, m.index).slice(-MAX_SCAN)),
       });
     }
   });

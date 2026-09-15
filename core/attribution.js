@@ -114,7 +114,11 @@ export function poetFromBookName(bookName) {
   const t = stripDiacritics(String(bookName ?? ''));
   const m = /(?:^|\s)(?:شرح\s+)?ديوان\s+(.+?)(?:\s+ل[ء-ي]|\s*[-–—]|$)/.exec(t);
   if (!m) return null;
-  return cleanName(m[1]);
+  // ★ علامةُ التحقيق تُقطع: «ديوان امرئ القيس ت المصطاوي» ← «امرئ القيس». ★
+  //   «ت» هنا المحقّق لا سنةُ وفاة، و«امرئ القيس ت المصطاوي» اسمٌ لا وجود له،
+  //   ولن يُطابق فهرس التراجم ولا «الأعلام» — فيضيع تأريخُ الشاعر كلُّه.
+  const withoutEditor = m[1].split(/\s+(?:ت|تحقيق|شرح|بشرح|رواية|جمع|صنعة|تحقيقه)\s+/)[0];
+  return cleanName(withoutEditor);
 }
 
 /**
@@ -192,10 +196,20 @@ export function attributeVerses(pageText, verses, { bookName } = {}) {
 
     if (hasVerse) {
       for (const v of versesHere) {
+        // ★ «ومنه قول الشاعر:» تصريحٌ بالجهل، فلا يُملأ بقائل الديوان — ★
+        //   شاهدٌ لغويٌّ داخل ديوان امرئ القيس ليس من شعره، ونسبتُه إليه كذب.
+        //
+        // ★ لكنّ الجهل لا يسري: ★ البيت المرقَّم بعده من شعر صاحب الديوان،
+        //   فالمحقّق يرقّم أبياته ولا يرقّم الشواهد. ولولا هذا لصار نصفُ الديوان
+        //   «غير معروف» لأن شاهدًا واحدًا ورد في شرح بيتٍ قبله.
+        const ownVerse = v.numbered && bookPoet;
+        if (ownVerse && currentSource === 'anonymous') { current = null; currentSource = null; }
+        const anonymous = !ownVerse && currentSource === 'anonymous';
         result.push({
           ...v,
-          poet: current ?? bookPoet ?? null,
-          poetSource: current ? currentSource : (bookPoet ? 'book' : null),
+          poet: current ?? (anonymous ? null : bookPoet) ?? null,
+          poetSource: current ? currentSource
+            : (anonymous ? 'anonymous' : (bookPoet ? (v.numbered ? 'book-numbered' : 'book') : null)),
         });
       }
     }
