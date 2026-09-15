@@ -163,3 +163,22 @@ button{min-height:44px}
 #council-hint{margin-inline-start:4px}
 .tabs button:disabled{opacity:.4;cursor:not-allowed}
 .check input:disabled + span{opacity:.5}
+
+/* ── التاريخ والفرز والسياق والتصحيح ── */
+.history{margin-top:12px}
+.history .chip{cursor:pointer;font-size:.88rem}
+.history .chip:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sort-pick,.group-pick{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:.9rem}
+.sort-pick select,.group-pick input{
+  background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  border-radius:8px;padding:6px 10px;font:inherit;font-size:.9rem;min-height:38px;
+}
+.ranking-note{color:var(--muted);font-size:.86rem;text-align:center;margin:6px 0 0;line-height:1.9}
+.ranking-note.weak{color:var(--warn)}
+.context{
+  margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);font-size:.94rem;line-height:2.1;white-space:pre-wrap;max-height:320px;overflow:auto;
+}
+.fixed-by-you{color:var(--info);font-size:.84rem}
+.badge.t-mudawwar{color:var(--muted)}
+button.stopping{background:var(--danger)}

@@ -32,6 +32,8 @@ import { isPrivateAddress, assertPublicUrl } from '../bridge/fetch-page.js';
 import { collectFromWeb } from '../bridge/web.js';
 import { splitVerses, looksArabic } from '../core/input.js';
 import { shamelaUrl } from '../core/trust.js';
+import { detectTadweer } from '../core/verses.js';
+import { rankBySimilarity, rankingNote, lexicalSimilarity, cosine, documentFrequencies } from '../core/semantic.js';
 import { buildIndex, searchIndex, indexTokens, bucketOf, verseBucketOf,
   TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord } from '../core/verse-index.js';
 
@@ -514,6 +516,70 @@ eq('والاسم الصحيح يمرّ', readAttributionLine('وقال جرير:
   eq('المرقَّم لصاحب الديوان', v[0].poet, 'جرير');
   eq('★ وغيرُ المرقَّم في ديوانٍ مرقَّم لا يُنسب إليه', v[1].poet, null);
   eq('والمرقَّم بعده يعود إليه', v[2].poet, 'جرير');
+}
+
+// ── البيت المدوَّر ─────────────────────────────────────────────────────────
+{
+  const t = detectTadweer('ودعوا اليأس والتعلل بالوه', 'م، ولا تركنوا إلى الأحلام');
+  ok('★ الكلمة الموزَّعة على الشطرين تُكشف', Boolean(t),
+    'ليست خطأ صفٍّ بل تدويرٌ يقتضيه العروض — ونقلُه كما هو يُري القارئ نصًّا مكسورًا');
+  eq('وتُوصل للمطابقة', t.word, 'بالوهم');
+  eq('والصدر يُعرض موصولًا في نسخة المطابقة', t.joinedSadr, 'ودعوا اليأس والتعلل بالوهم');
+  eq('والعجز بلا الحرف المقتطع', t.joinedAjz, 'ولا تركنوا إلى الأحلام');
+  ok('و«بالقول» كذلك', detectTadweer('تعست أمة تحاول بالقو', 'ل بلوغ المنى')?.word === 'بالقول');
+  eq('★ والبيت السليم لا يُمَسّ',
+    detectTadweer('وما نيل المطالب بالتمني', 'ولكن تؤخذ الدنيا غلابا'), null);
+  eq('★ ولا الكلمة القصيرة القائمة بنفسها',
+    detectTadweer('قفا نبك من ذكرى', 'يا دار مي على البلى'), null);
+  const v = extractVerses('ودعوا اليأس والتعلل بالوه ... م، ولا تركنوا إلى الأحلام')[0];
+  eq('والمعروض يبقى كما طُبع', v.text, 'ودعوا اليأس والتعلل بالوه ... م، ولا تركنوا إلى الأحلام');
+  ok('ومعه نسخةٌ موصولةٌ للمطابقة', v.joined.includes('بالوهم') && v.mudawwar);
+}
+
+// ── الترتيب بالمعنى (المرحلة ٦) ───────────────────────────────────────────
+eq('جيب التمام للمتطابقين', cosine([1, 2, 3], [1, 2, 3]), 1);
+eq('وللمتعامدين', cosine([1, 0], [0, 1]), 0);
+eq('ولمتجهٍ فارغ', cosine([], [1]), 0);
+ok('التشابه اللفظيّ يقيس الاشتراك',
+  lexicalSimilarity('السعي إلى المعالي', 'من طلب المعالي سهر') > 0
+  && lexicalSimilarity('السعي إلى المعالي', 'ذهب الفتى إلى السوق') === 0);
+ok('★ والكلمة النادرة أثقل من الشائعة في الوزن', (() => {
+  // «الدنيا» في كل الأبيات، و«غلابا» في واحد. فالسؤال فيه الكلمتان،
+  // ومن شارك في النادرة أولى ممّن شارك في الشائعة.
+  const texts = ['الدنيا زائله', 'الدنيا فانيه', 'الدنيا دار', 'الدنيا غلابا'];
+  const { df, total } = documentFrequencies(texts);
+  const rare = lexicalSimilarity('الدنيا غلابا', 'ونعم غلابا', { df, total });
+  const common = lexicalSimilarity('الدنيا غلابا', 'ونعم الدنيا', { df, total });
+  return rare > common;
+})());
+
+{
+  const q = 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا';
+  const mk = (text, poet, mq) => ({ text, poet, matchedQueries: mq });
+
+  // بلا مجلسٍ ولا تضمينات: اللفظ وحده — ★ ويُقال إنه لا يقيس المعنى ★
+  const weak = rankBySimilarity(q, [mk('ومن يتهيب صعود الجبال ... يعش أبد الدهر بين الحفر', 'الشابي')]);
+  eq('أساس الترتيب يُسمّى', weak[0].ranking.basis, 'lexical');
+  ok('★ وضعفُه يُقال صراحةً للمستخدم', /لا يقيس المعنى/.test(rankingNote('lexical')),
+    'البيت الموافق في المعنى قد لا يشترك مع بيتك في كلمة واحدة');
+
+  // مع المجلس: عددُ مداخل المعنى أصدقُ من اللفظ
+  const withCouncil = rankBySimilarity(q, [
+    mk('وقال الخليفة إن الدنيا زائلة ... وما في الدنيا من باق', null, ['الدنيا']),
+    mk('بقدر الكد تكتسب المعالي ... ومن طلب العلا سهر الليالي', 'مجهول',
+      ['طلب المعالي', 'السعي المجد', 'الجد والاجتهاد', 'بلوغ المنى']),
+  ], { queryCount: 4 });
+  eq('الأساس يصير «مداخل المجلس»', withCouncil[0].ranking.basis, 'council');
+  ok('★ والبيت الموافق معنًى يتقدّم على المشارك لفظًا',
+    withCouncil[0].text.includes('بقدر الكد'),
+    'اللفظ كان يرفع «إن الدنيا زائلة» لمجرّد كلمة «الدنيا»');
+
+  // مع التضمينات: المتجه هو الأصل
+  const A = mk('أ ... ب', null), B = mk('ج ... د', null);
+  const emb = new Map([[A.text, [1, 0, 0]], [B.text, [0, 1, 0]]]);
+  const ranked = rankBySimilarity('س', [A, B], { embeddings: emb, queryVector: [0.9, 0.1, 0] });
+  eq('الأساس تضميناتٌ', ranked[0].ranking.basis, 'embeddings');
+  eq('والأقربُ متجهًا يتقدّم', ranked[0].text, 'أ ... ب');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

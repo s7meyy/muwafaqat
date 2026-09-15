@@ -12,6 +12,7 @@ import { Shamela, POETRY_CATEGORIES } from './shamela.js';
 import { transcribeImage, availableProviders } from './transcribe.js';
 import { councilSize } from './council.js';
 import { webSearchAvailable, webSearchProvider } from './web.js';
+import { embeddingsAvailable, embeddingsProvider } from './providers/embeddings.js';
 
 const config = loadConfig();
 const shamela = new Shamela({
@@ -76,6 +77,7 @@ const server = http.createServer(async (req, res) => {
       transcribers: availableProviders(),   // تعرف الواجهة أتقدر على الصور أم لا
       council: councilSize(),               // وكم عضوًا في مجلس النماذج
       web: webSearchAvailable() ? webSearchProvider() : null,
+      embeddings: embeddingsAvailable() ? embeddingsProvider() : null,
     }, corsOrigin);
   }
 
@@ -137,6 +139,31 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         return send(res, e.code === 'NO_PROVIDER' ? 501 : 502, { error: e.message, code: e.code }, corsOrigin);
       }
+    }
+
+    // سياقُ البيت: ما قبله وما بعده في صفحته — «أرِني الصفحة»
+    if (url.pathname === '/v1/context' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (!b.book_id || !b.page_id) return send(res, 400, { error: 'book_id و page_id مطلوبان' }, corsOrigin);
+      const pg = await shamela.page(b.book_id, b.page_id);
+      const body = pg?.body ?? '';
+      let excerpt = body;
+      if (b.around) {
+        const { normalize } = await import('../core/normalize.js');
+        const needle = normalize(b.around).split(' ').slice(0, 4).join(' ');
+        const norm = normalize(body);
+        const at = norm.indexOf(needle);
+        if (at !== -1) {
+          const ratio = body.length / (norm.length || 1);
+          const centre = Math.round(at * ratio);
+          const radius = Math.min(Number(b.radius ?? 600), 2000);
+          excerpt = body.slice(Math.max(0, centre - radius), centre + radius);
+        }
+      }
+      return send(res, 200, {
+        bookName: pg?.book_name ?? null, printedPage: pg?.printed_page ?? null,
+        excerpt, citation: pg?.citation ?? null, truncated: excerpt.length < body.length,
+      }, corsOrigin);
     }
 
     if (url.pathname === '/v1/page' && req.method === 'POST') {

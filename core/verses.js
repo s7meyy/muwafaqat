@@ -123,10 +123,15 @@ export function extractVerses(pageText) {
       if (!pair) continue;
       const { sadr, ajz } = pair;
 
+      const tadweer = detectTadweer(sadr, ajz);
       out.push({
         sadr: sadr.trim(),
         ajz: ajz.trim(),
         text: `${sadr.trim()} ... ${ajz.trim()}`,
+        // نصٌّ موصولٌ للمطابقة وحدها — والمعروض يبقى كما طُبع
+        joined: tadweer ? `${tadweer.joinedSadr} ... ${tadweer.joinedAjz}` : null,
+        mudawwar: Boolean(tadweer),
+        splitWord: tadweer?.word ?? null,
         plain: `${stripDiacritics(sadr).trim()} ... ${stripDiacritics(ajz).trim()}`,
         offset: lineStart + Math.max(0, m.index - sadr.length),
         column: Math.max(0, m.index - sadr.length), // موضع البيت في سطره — ما قبله نثرٌ لا شعر
@@ -140,6 +145,40 @@ export function extractVerses(pageText) {
   });
 
   return out;
+}
+
+// كلماتٌ عربيةٌ قائمةٌ بنفسها طولها حرفان — فلا تُعدّ كسرًا لكلمة.
+const SHORT_WORDS = new Set([
+  'ما', 'لا', 'من', 'في', 'عن', 'يا', 'هل', 'بل', 'لم', 'لن', 'قد', 'ثم', 'أو', 'او',
+  'إن', 'ان', 'أن', 'كم', 'مذ', 'إذ', 'اذ', 'لو', 'كي', 'له', 'بك', 'بي', 'به', 'هي', 'هو',
+]);
+
+/**
+ * ★ البيت المدوَّر ★ — الكلمة موزَّعةٌ على الشطرين.
+ *
+ * «ودعوا اليأس والتعلل بالوه ... م، ولا تركنوا إلى الأحلام»
+ * ليس خطأ صفٍّ في المجلة: هو التدوير، والعروض يقتضيه. لكنّ نقلَه هكذا يُري
+ * القارئ نصًّا مكسورًا، ويمنع مطابقة البيت برواية كتابٍ آخر كتبه موصولًا.
+ *
+ * فنكشفه: عجزٌ يبدأ بحرفٍ أو حرفين ليسا كلمةً قائمة ⇒ الكلمة مقطوعة.
+ * ونُبقي الشطرين كما هما (فذاك هو المطبوع)، ونُخرج `joined` موصولةً للمطابقة،
+ * ونسم البيت `mudawwar` ليُقال للقارئ ما هو، لا أن يُظنّ نصًّا معطوبًا.
+ */
+export function detectTadweer(sadr, ajz) {
+  const head = stripDiacritics(ajz).trim().split(/\s+/)[0] ?? '';
+  const bare = head.replace(/[^\u0621-\u064A]/g, '');
+  if (!bare || bare.length > 2 || SHORT_WORDS.has(normalize(bare))) return null;
+
+  const tail = stripDiacritics(sadr).trim().split(/\s+/).pop() ?? '';
+  if (normalize(tail).length < 2) return null;     // الصدر نفسه مقطوع؟ نتركه
+
+  const rest = ajz.trim().slice(head.length).replace(/^[\s،,.]+/, '');
+  if (!rest) return null;
+  return {
+    word: `${tail}${bare}`,
+    joinedSadr: sadr.trim().replace(/\S+$/, `${tail}${bare}`),
+    joinedAjz: rest,
+  };
 }
 
 /**

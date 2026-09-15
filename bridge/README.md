@@ -56,6 +56,8 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | `GEMINI_TEXT_MODEL` | `gemini-2.5-flash` | عضو المجلس من جوجل |
 | `BRAVE_API_KEY` | — | البحث في الشبكة ([طبقة مجانية](https://brave.com/search/api/)) |
 | `SEARXNG_URL` | — | بديلٌ بلا مفتاح تشغّله بنفسك |
+| `GEMINI_EMBED_MODEL` | `text-embedding-004` | تضمينات الترتيب الدلالي |
+| `JINA_API_KEY` / `JINA_MODEL` | — | بديلٌ للتضمينات |
 
 **بلا بحثٍ في الشبكة** يعمل كل شيءٍ آخر على المكتبة وحدها، وتقول الواجهة ذلك —
 والنبطيّ لن يظهر، لأن مصدره الشبكة لا المكتبة المحقَّقة.
@@ -73,6 +75,7 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | **`POST /v1/verses`** | **الأهمّ** — استعلامٌ يدخل، أبياتٌ موثَّقةٌ تخرج |
 | **`POST /v1/council`** | **مجلس النماذج** — بيتٌ يدخل، ومداخلُ المعنى تُبحث كلها |
 | `POST /v1/transcribe` | تفريغ صورة بنموذجين: `{image (base64), mimeType}` |
+| `POST /v1/context` | سياقُ البيت في صفحته: `{book_id, page_id, around}` |
 | `POST /v1/page` | نصّ صفحة: `{book_id, page_id}` |
 
 ### مثال

@@ -65,8 +65,14 @@
     <span class="hint" id="hint"></span>
   </div>
 
+  <div id="history" class="chips history" hidden></div>
+
   <div id="saved-bar" class="saved-bar" hidden>
     <span>محفوظاتك: <strong id="saved-count"></strong></span>
+    <label class="group-pick" for="group-name">المجموعة:
+      <input id="group-name" list="group-list" size="12" placeholder="محفوظاتي">
+      <datalist id="group-list"></datalist>
+    </label>
     <button type="button" id="export-saved" class="linkish">صدّرها ملفًّا</button>
     <button type="button" id="clear-saved" class="linkish quiet">امسحها</button>
   </div>
@@ -79,6 +85,14 @@
   </section>
 
   <section id="filters" class="filters" hidden>
+    <label class="sort-pick" for="sort">رتّب:
+      <select id="sort">
+        <option value="score">بالقرب من بيتك</option>
+        <option value="oldest">بالأقدم</option>
+        <option value="newest">بالأحدث</option>
+        <option value="poet">باسم الشاعر</option>
+      </select>
+    </label>
     <span class="filters-label">اعرض:</span>
     <label class="check"><input type="checkbox" class="trust-filter" value="documented" checked><span>🟢 موثَّق</span></label>
     <label class="check"><input type="checkbox" class="trust-filter" value="published" checked><span>🟡 منشور</span></label>
@@ -87,6 +101,7 @@
 
   <section id="status" class="status" hidden></section>
   <p id="filter-note"></p>
+  <p id="ranking-note" class="ranking-note"></p>
   <section id="results" class="results"></section>
 </main>
 

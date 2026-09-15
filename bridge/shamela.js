@@ -7,6 +7,8 @@ import { McpStdioClient } from './mcp-client.js';
 import { Biography } from './biography.js';
 import { expand } from './council.js';
 import { collectFromWeb, webSearchAvailable } from './web.js';
+import { embed, embeddingsAvailable, embeddingsProvider } from './providers/embeddings.js';
+import { rankBySimilarity, rankingNote } from '../core/semantic.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses } from '../core/attribution.js';
 import { gate } from '../core/verify.js';
@@ -135,7 +137,7 @@ export class Shamela {
   }
 
   /** البوابة ← المكرَّر ← التأريخ ← الترتيب. مسارٌ واحدٌ لكل بيتٍ مهما كان مصدره. */
-  async finalize(ctx, { excludeVerse = null } = {}) {
+  async finalize(ctx, { excludeVerse = null, queryCount = 1, env = process.env } = {}) {
     const { passed, rejectedCount } = gate(ctx.candidates, ctx.documents);
 
     // البيت الذي سألتَ به ليس موافقةً له — فيُستبعد هو ورواياته
@@ -160,24 +162,43 @@ export class Shamela {
         v.registerConfidence = reg.confidence;
       }
 
-      // الترتيب: المداخل التي بلغته أولًا، ثم تعدّد مصادره، ثم درجة توثيقه،
-      // ثم كونه معروف القائل. ولا شيء من هذا يُدخل بيتًا لم يمرّ بالبوابة.
-      // و«قرنُ الأسطر» أضعفُ من الفاصل الصريح، فيُنقَص.
-      const trustRank = TRUST[v.source?.trust]?.rank ?? 1;
-      const weakPairing = v.source?.pairing === 'lines' ? -1 : 0;
-      v.score = ((v.matchedQueries?.length || 1) * 2)
-        + (v.sources?.length ?? 1) + trustRank + (v.poet ? 1 : 0) + weakPairing;
     }
-    merged.sort((a, b) => b.score - a.score);
 
-    return { verses: merged, rejectedCount, pagesRead: ctx.documents.length, budgetExhausted: ctx.budgetExhausted };
+    // ★ الترتيب بالمعنى (المرحلة ٦) ★ — والتضمينات إن وُجد مفتاحُها
+    let embeddings = null, queryVector = null;
+    if (excludeVerse && embeddingsAvailable(env) && merged.length) {
+      try {
+        const vectors = await embed([excludeVerse, ...merged.map((v) => v.text)], env);
+        queryVector = vectors.get(excludeVerse) ?? null;
+        if (queryVector) embeddings = vectors;
+      } catch { /* الترتيب يتراجع إلى مداخل المجلس */ }
+    }
+    const ranked = rankBySimilarity(excludeVerse ?? '', merged, { embeddings, queryVector, queryCount });
+
+    // درجةُ التوثيق وطريقةُ القراءة تُعدّلان الدرجة بعد قياس المعنى لا قبله
+    for (const v of ranked) {
+      const trustRank = (TRUST[v.source?.trust]?.rank ?? 1) * 0.01;
+      const weakPairing = v.source?.pairing === 'lines' ? -0.05 : 0;
+      v.score = Number((v.score + trustRank + weakPairing).toFixed(4));
+    }
+    ranked.sort((a, b) => b.score - a.score);
+
+    return {
+      verses: ranked, rejectedCount,
+      pagesRead: ctx.documents.length, budgetExhausted: ctx.budgetExhausted,
+      ranking: {
+        basis: ranked[0]?.ranking?.basis ?? 'lexical',
+        note: rankingNote(ranked[0]?.ranking?.basis ?? 'lexical'),
+        provider: embeddings ? embeddingsProvider(env) : null,
+      },
+    };
   }
 
   /** بحثٌ باستعلامٍ واحدٍ — المرحلة الأولى، وما زال يعمل كما هو. */
   async verses(query, opts = {}) {
     const ctx = this.newContext(MAX_PAGES_PER_QUERY);
     const totalHits = await this.collect(query, ctx, opts);
-    const out = await this.finalize(ctx, { excludeVerse: opts.excludeVerse ?? null });
+    const out = await this.finalize(ctx, { excludeVerse: opts.excludeVerse ?? query, env: opts.env });
     return { query, mode: opts.mode ?? 'near', totalHits, ...out };
   }
 
@@ -228,7 +249,9 @@ export class Shamela {
       perQuery.push({ ...q, totalHits, found: fromShamela + fromWeb, fromShamela, fromWeb });
     }
 
-    const out = await this.finalize(ctx, { excludeVerse: verse });
+    const out = await this.finalize(ctx, {
+      excludeVerse: verse, queryCount: plan.queries.length, env,
+    });
     return { verse, council: { ...plan, perQuery }, web: webStats, ...out };
   }
 }
