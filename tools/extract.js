@@ -68,6 +68,9 @@ async function booksIn(categoryId) {
   return books;
 }
 
+// ★ يُرفع علمٌ حين ينقطع القراءة، لا أن تُبتلع صامتة. ★
+let readFailed = false;
+
 async function* pagesOf(bookId) {
   let start = 1;
   for (;;) {
@@ -76,7 +79,7 @@ async function* pagesOf(bookId) {
       r = await client.callTool('shamela_get_pages_range', {
         book_id: bookId, start_page_id: start, count: PAGES_PER_CALL, response_format: 'json',
       });
-    } catch { return; }
+    } catch { readFailed = true; return; }
     const pages = r?.pages ?? [];
     if (!pages.length) return;
     for (const p of pages) yield p;
@@ -105,8 +108,11 @@ async function main() {
   const todo = allBooks.filter((b) => !done.has(b.book_id));
   log(`كتبٌ في النطاق: ${toArabicDigits(String(allBooks.length))} · بقي منها: ${toArabicDigits(String(todo.length))}`);
 
+  const incomplete = [];
+
   for (const [n, book] of todo.entries()) {
     let bookVerses = 0, bookPages = 0;
+    readFailed = false;
     for await (const page of pagesOf(book.book_id)) {
       const body = page?.body ?? '';
       bookPages++;
@@ -126,18 +132,32 @@ async function main() {
         bookVerses++;
       }
     }
-    state.doneBooks.push(book.book_id);
+    // ★ الكتاب الذي انقطعت قراءته لا يُعدّ منجَزًا. ★
+    //   وإلّا سُجِّل تامًّا ولم يُعَد إليه أبدًا — وضاع ما فيه بلا كلمة.
+    //   (خادم الشاملة قد يموت في منتصف كتاب، والعميل يعيد تشغيله فيمضي
+    //    العمل كأن شيئًا لم يكن، والكتاب مكتوبٌ في المنجَز وهو فارغ.)
+    const broken = readFailed || bookPages === 0;
+    if (broken) incomplete.push({ id: book.book_id, name: book.book_name, pages: bookPages });
+    else state.doneBooks.push(book.book_id);
+
     state.verses += bookVerses;
     state.pages += bookPages;
+    state.incomplete = incomplete.map((b) => b.id);
     saveState(state);
     log(`[${toArabicDigits(String(n + 1))}/${toArabicDigits(String(todo.length))}] ${book.book_name} — `
-      + `${toArabicDigits(String(bookVerses))} بيتًا من ${toArabicDigits(String(bookPages))} صفحة`);
+      + (broken ? '★ انقطعت قراءته، وسيُعاد إليه' : `${toArabicDigits(String(bookVerses))} بيتًا من ${toArabicDigits(String(bookPages))} صفحة`));
   }
 
   sink.end();
   const dated = biography.cache ? [...biography.cache.values()].filter(Boolean).length : 0;
   log(`تمّ. ${toArabicDigits(String(state.verses))} بيتًا من ${toArabicDigits(String(state.pages))} صفحة`
     + ` · عُرفت وفياتُ ${toArabicDigits(String(dated))} شاعرًا ← ${OUT}`);
+
+  if (incomplete.length) {
+    log('');
+    log(`★ ${toArabicDigits(String(incomplete.length))} كتابًا لم تتمّ قراءته — أعِد التشغيل ليُستأنف:`);
+    for (const b of incomplete) log(`   - ${b.name} (${toArabicDigits(String(b.id))})`);
+  }
   client.stop();
 }
 

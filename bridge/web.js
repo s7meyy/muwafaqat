@@ -67,7 +67,7 @@ export async function collectFromWeb(query, ctx, env = process.env, { maxPages =
       if (terms.length) {
         const nv = normalize(v.text);
         const matched = terms.filter((t) => nv.includes(t)).length;
-        if (matched < Math.min(terms.length, Math.max(1, terms.length - 1))) continue;
+        if (matched < 1) continue;
       }
       const reg = detectRegister(v.text);
       ctx.candidates.push({

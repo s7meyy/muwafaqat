@@ -66,14 +66,30 @@ export function shardName(bucket) {
 
 /** كلماتُ البيت التي تدخل الفهرس. */
 export function indexTokens(text) {
-  const seen = new Set();
+  return queryGroups(text).flatMap((g) => g.forms);
+}
+
+/**
+ * كلماتُ السؤال مجموعةً بأصلها: كل كلمةٍ وصيغتاها (كما وردت ومجرَّدةً).
+ *
+ * ★ ولمَ الجمع: ★ تجريدُ السوابق يضاعف عدد الكلمات، فـ«التمني الأماني»
+ * تصير أربعَ كلمات. وشرطُ «تطابق كلّها إلا واحدة» إن حُسب على الأربع صار
+ * يطلب ثلاثًا — والبيت الذي فيه «بالتمني» يطابق صيغتين فقط فيسقط.
+ * فكان البحث يعود صفرًا على فهرسٍ فيه البيت المطلوب. والعدّ يجب أن يقع
+ * على ما سُئل عنه لا على ما تفرّع منه.
+ */
+export function queryGroups(text) {
+  const groups = [];
+  const seenWords = new Set();
   for (const w of normalize(text).split(' ')) {
-    if (w.length < MIN_TOKEN || NOT_INDEXED.has(w)) continue;
-    seen.add(w);
+    if (w.length < MIN_TOKEN || NOT_INDEXED.has(w) || seenWords.has(w)) continue;
+    seenWords.add(w);
+    const forms = [w];
     const bare = stripPrefixes(w);
-    if (bare !== w && bare.length >= MIN_TOKEN && !NOT_INDEXED.has(bare)) seen.add(bare);
+    if (bare !== w && bare.length >= MIN_TOKEN && !NOT_INDEXED.has(bare)) forms.push(bare);
+    groups.push({ word: w, forms });
   }
-  return [...seen];
+  return groups;
 }
 
 /** سجلُّ البيت في الفهرس — مفاتيحُه قصيرةٌ عمدًا، فالحجم يُضرب في مئات الألوف. */
@@ -178,8 +194,9 @@ export function verseBucketOf(id) {
 export async function searchIndex(query, load, { limit = 20, proximity = 12, excludeVerse = null } = {}) {
   // ★ البيت الذي سألتَ به ليس موافقةً له. ★ كان الفهرس يُعيده جوابًا لنفسه.
   const excludeFp = excludeVerse ? fingerprint(excludeVerse) : null;
-  const terms = indexTokens(query);
-  if (!terms.length) return { verses: [], terms: [], scanned: 0 };
+  const groups = queryGroups(query);
+  const terms = groups.flatMap((g) => g.forms);
+  if (!groups.length) return { verses: [], terms: [], scanned: 0 };
 
   // (١) نجلب شظايا الكلمات المطلوبة وحدها — لا الفهرس كلّه
   const postings = [];
@@ -196,13 +213,32 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12, exc
     postings.push({ term: t, ids: bucket?.[t] ?? [] });
   }
 
-  // (٢) البيت الذي فيه أكثرُ الكلمات أولى. ولا نشترط اجتماعها كلها:
+  // (٢) البيت الذي فيه أكثرُ كلمات السؤال أولى. ولا نشترط اجتماعها كلها:
   //     الروايات تختلف في كلمة، والاشتراط يُسقط البيت الصحيح.
+  //     ★ والعدُّ على الكلمة الأصل: صيغتاها (كما وردت ومجرَّدةً) كلمةٌ واحدة. ★
+  const byWord = new Map(postings.map((p) => [p.term, p.ids]));
   const counts = new Map();
-  for (const p of postings) for (const id of p.ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const g of groups) {
+    const hits = new Set();
+    for (const f of g.forms) for (const id of byWord.get(f) ?? []) hits.add(id);
+    for (const id of hits) counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
   if (!counts.size) return { verses: [], terms, scanned: 0 };
 
-  const need = Math.max(1, Math.min(terms.length, terms.length - 1));
+  // ★ لا يُشترط اجتماع كلمات البيت كلها. ★
+  //
+  // المستخدم يلصق بيتَه كاملًا — ثمانيَ كلماتٍ أو أكثر — وشرطُ «كلّها إلا
+  // واحدة» يطلب سبعًا مشتركة، ولا يشترك بيتان في سبع كلماتٍ إلا أن يكونا
+  // البيت نفسه. فكان البحث بالبيت كاملًا (وهو أوّل ما يفعله المستخدم)
+  // يعود صفرًا دائمًا، ولا يعمل إلا إن اختصر المستخدم بيته بكلمتين.
+  //
+  // ★ وكلمةٌ واحدةٌ تكفي للدخول، والترتيب يتكفّل بالباقي. ★
+  //   لأن البيت الموافق في المعنى قد لا يشترك مع بيتك إلا في كلمة:
+  //   «وما نيل المطالب بالتمني» و«طلبت لها المخارج بالتمنّي» تشتركان في
+  //   «تمني» وحدها — ومنعُها يمنع الموافقة نفسها.
+  //   والحشوُ مأمونٌ: حروفُ المعاني غير مفهرسة أصلًا، والمرشَّحون يُرتَّبون
+  //   بعدد ما شاركوا فيه ثم يُقصّون عند الحدّ، فالأكثرُ مشاركةً يتقدّم.
+  const need = 1;
   // ★ نقتصر على ضعف المطلوب: كلُّ مرشَّحٍ يكلّف شظيّةً تُجلب، ★
   //   والتقارب يُسقط بعضهم فنترك هامشًا ولا نُسرف.
   const candidates = [...counts.entries()]
@@ -242,7 +278,15 @@ export function withinProximity(text, terms, distance) {
     const j = bare.indexOf(stripPrefixes(t));
     return j;
   };
-  const positions = terms.map(find).filter((i) => i !== -1);
+  // كلُّ كلمةٍ تُطلب بإحدى صيغتيها، ولا تُعدّ مرّتين
+  const seen = new Set();
+  const positions = [];
+  for (const t of terms) {
+    const key = stripPrefixes(t);
+    if (seen.has(key)) continue;
+    const at = find(t);
+    if (at !== -1) { seen.add(key); positions.push(at); }
+  }
   if (positions.length < 2) return positions.length >= 1;
   return Math.max(...positions) - Math.min(...positions) <= distance;
 }

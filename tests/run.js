@@ -33,6 +33,7 @@ import { collectFromWeb } from '../bridge/web.js';
 import { splitVerses, looksArabic } from '../core/input.js';
 import { shamelaUrl } from '../core/trust.js';
 import { detectTadweer } from '../core/verses.js';
+import { queryGroups } from '../core/verse-index.js';
 import { rankBySimilarity, rankingNote, lexicalSimilarity, cosine, documentFrequencies } from '../core/semantic.js';
 import { buildIndex, searchIndex, indexTokens, bucketOf, verseBucketOf,
   TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord } from '../core/verse-index.js';
@@ -580,6 +581,46 @@ ok('★ والكلمة النادرة أثقل من الشائعة في الوز
   const ranked = rankBySimilarity('س', [A, B], { embeddings: emb, queryVector: [0.9, 0.1, 0] });
   eq('الأساس تضميناتٌ', ranked[0].ranking.basis, 'embeddings');
   eq('والأقربُ متجهًا يتقدّم', ranked[0].text, 'أ ... ب');
+}
+
+// ── ما كشفته الجولة الثالثة ───────────────────────────────────────────────
+
+// (١) النسبة في كتب الأدب — بِنيةٌ غير بِنية الديوان
+eq('★ «رجل من بني الحارث» تصريحٌ بالجهل لا اسم',
+  readAttributionLine('وقال رجل من بني الحارث:')?.kind, 'anonymous');
+eq('★ «ونحوه:» انتقالٌ إلى بيتِ غيره لا ضميرٌ يعود عليه',
+  readAttributionLine('ونحوه:')?.kind, 'anonymous');
+eq('و«ومثله:» كذلك', readAttributionLine('ومثله:')?.kind, 'anonymous');
+eq('★ والوصفُ بعد الاسم يُقطع',
+  readAttributionLine('وقال زهير بن خباب الكلبي وكان من المعمرين:')?.name, 'زهير بن خباب الكلبي');
+eq('والنسبة بلا نقطتين تُقرأ', readAttributionLine('وقال المتنبّي')?.name, 'المتنبي');
+
+// (٢) تجريدُ السوابق كان يُبطل شرط المطابقة
+{
+  const g = queryGroups('التمني الأماني');
+  eq('كلمتان لا أربع', g.length, 2);
+  ok('ولكلٍّ صيغتاها', g[0].forms.length === 2 && g[0].forms.includes('تمني'));
+}
+
+{
+  const index = buildIndex([
+    { text: 'إذا ازدحمت همومي في فؤادي ... طلبت لها المخارج بالتمنّي', poet: null, source: {} },
+    { text: 'من كان مرعى عزمه وهمومه ... روض الأماني لم يزل مهزولا', poet: 'أبو تمام', source: {} },
+    { text: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', poet: 'شوقي', source: {} },
+  ]);
+  const load = async (k, b) => (k === 'tokens' ? index.tokens.get(b) : index.store.get(b)) ?? {};
+
+  ok('★ «التمني الأماني» تجد ثلاثة — وكانت تعود صفرًا',
+    (await searchIndex('التمني الأماني', load)).verses.length === 3,
+    'تجريد السوابق ضاعف كلمات السؤال، فصار شرط «كلّها إلا واحدة» يطلب ثلاثًا من أربع');
+
+  const whole = await searchIndex('وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', load,
+    { excludeVerse: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا' });
+  ok('★ والبحث بالبيت كاملًا يجد موافقه — وكان يعود صفرًا دائمًا',
+    whole.verses.length >= 1 && whole.verses[0].text.includes('المخارج بالتمنّي'),
+    'بيتٌ من ثماني كلماتٍ كان يطلب سبعًا مشتركة، ولا يشترك بيتان في سبعٍ إلا أن يكونا واحدًا');
+  ok('ولا يُعيد البيت جوابًا لنفسه',
+    !whole.verses.some((v) => v.text.startsWith('وما نيل')));
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

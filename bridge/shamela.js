@@ -99,10 +99,12 @@ export class Shamela {
 
       const found = attributeVerses(body, extractVerses(body), { bookName: hit.book_name });
       for (const v of found) {
+        // كلمتان تكفيان — والعلّة نفسها: اشتراطُ «كلّها إلا واحدة» يُسقط كلَّ
+        // شيءٍ حين يكون السؤال بيتًا كاملًا. (انظر verse-index.js)
         if (terms.length) {
           const nv = normalize(v.text);
           const matched = terms.filter((t) => nv.includes(t)).length;
-          if (matched < Math.min(terms.length, Math.max(1, terms.length - 1))) continue;
+          if (matched < 1) continue;
         }
         ctx.candidates.push({
           ...v,
