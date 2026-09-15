@@ -30,6 +30,8 @@ import { detectRegister } from '../core/register.js';
 import { poetFromWebPage } from '../core/attribution.js';
 import { isPrivateAddress, assertPublicUrl } from '../bridge/fetch-page.js';
 import { collectFromWeb } from '../bridge/web.js';
+import { buildIndex, searchIndex, indexTokens, bucketOf, verseBucketOf,
+  TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord } from '../core/verse-index.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -369,6 +371,47 @@ ok('والعامّة تُقبل', !isPrivateAddress('8.8.8.8') && !isPrivateAddr
     await collectFromWeb('الصبر مفتاح الفرج', c, FAKE_WEB_ENV, { lookup: fakeLookup });
     eq('★ وصفحةُ نثرٍ لا تُعطي شعرًا', c.candidates.length, 0);
   } finally { restore(); }
+}
+
+// ── الفهرس الساكن ─────────────────────────────────────────────────────────
+{
+  const sample = [
+    { text: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', poet: 'شوقي', deathYear: 1351,
+      source: { bookName: 'علم المعاني', printedPage: '66', bookId: 17670, pageId: 60 } },
+    { text: 'دع الأيام تفعل ما تشاء ... وطب نفسا اذا حكم القضاء', poet: 'الشافعي', deathYear: 204,
+      source: { bookName: 'الديوان', printedPage: '12' } },
+    { text: 'ومن يتهيب صعود الجبال ... يعش أبد الدهر بين الحفر', poet: null,
+      source: { bookName: 'ديوان الشابي' } },
+    { text: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', poet: 'شوقي',
+      source: { bookName: 'كتابٌ آخر' } },
+  ];
+  const built = buildIndex(sample);
+  eq('★ المكرَّر لا يُفهرس مرّتين', built.meta.verses, 3);
+  ok('حروف المعاني لا تُفهرس', !indexTokens('من في على الدنيا').includes('في'));
+  ok('والكلمة القصيرة كذلك', !indexTokens('لم يد به').includes('يد'));
+  ok('★ شظايا السجلّات أكثرُ من شظايا الكلمات', VERSE_SHARDS > TOKEN_SHARDS,
+    'المرشَّحون يتفرّقون في شظايا السجلّات، فتكثيرُها يُصغّر ما يُجلب لكل بحث');
+  eq('وبصمة الكلمة ثابتة', bucketOf('المطالب'), bucketOf('المطالب'));
+  ok('وتقع في المدى', bucketOf('المطالب') < TOKEN_SHARDS && verseBucketOf(7) < VERSE_SHARDS);
+
+  const load = async (kind, b) => (kind === 'tokens' ? built.tokens.get(b) : built.store.get(b)) ?? {};
+  {
+    const r = await searchIndex('المطالب التمني', load);
+    eq('البحث يجد البيت', r.verses.length, 1);
+    eq('بقائله', r.verses[0].poet, 'شوقي');
+    eq('وبكتابه وصفحته', r.verses[0].source.printedPage, '66');
+    eq('ومجهولُ القائل يبقى مجهولًا', (await searchIndex('صعود الجبال', load)).verses[0].poet, null);
+    eq('وما ليس فيه لا يُخترع', (await searchIndex('كلمات غائبة تماما', load)).verses.length, 0);
+  }
+  ok('★ والتقارب يُشترط: الكلمتان في بيتٍ واحدٍ لا يكفي، بل قريبتان',
+    withinProximity('وما نيل المطالب بالتمني ولكن تؤخذ الدنيا غلابا', ['المطالب', 'التمني'], 12)
+    && !withinProximity('المطالب ' + 'حشو '.repeat(20) + 'التمني', ['المطالب', 'التمني'], 12));
+
+  const rec = toRecord(sample[0], 1);
+  ok('★ سجلّ الفهرس مفاتيحُه قصيرة — الحجم يُضرب في مئات الألوف',
+    Object.keys(rec).every((k) => k.length === 1));
+  eq('ويعود إلى شكله المعروف', fromRecord(rec).source.bookName, 'علم المعاني');
+  eq('بشطرَيه', fromRecord(rec).ajz, 'ولكن تؤخذ الدنيا غلابا');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

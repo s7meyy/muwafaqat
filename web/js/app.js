@@ -2,9 +2,13 @@
 // الصور وشاشة الاعتماد في المرحلة الثانية، وزرُّ البحث يبقى معطَّلًا حتى الاعتماد.
 
 import { toArabicDigits } from '../../core/normalize.js';
-import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ } from '../../core/plural.js';
+import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE } from '../../core/plural.js';
+
+const VERSE_TOTAL = { zero: 'فهرسٌ فارغ', one: 'فيه بيتٌ واحد', two: 'فيه بيتان',
+  few: 'فيه # أبيات', many: 'فيه # بيتًا', other: 'فيه # بيت' };
 import { toArabicDigits as ar } from '../../core/normalize.js';
 import { install as installApproval } from './approve.js';
+import { searchStatic, indexMeta } from './static-index.js';
 
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
 const TOKEN = localStorage.getItem('muwafaqat.token') || '';
@@ -200,7 +204,26 @@ async function search() {
     $('filters').hidden = false;
     renderVerses();
   } catch (e) {
-    setStatus(`تعذّر البحث: ${e.message}. تأكّد أن جسر الشاملة يعمل على جهازك.`, true);
+    // ★ الجسر مغلق (أو الجهاز مطفأ) — فالفهرس الساكن يقوم مقامه ★
+    try {
+      const data = await searchStatic(query);
+      if (!data.verses.length) {
+        setStatus(`لم يُوجد بيتٌ موافق في الفهرس المنشور. والجسر غير متاح الآن، فلم يُبحث في المكتبة الحيّة.`);
+        return;
+      }
+      lastVerses = data.verses;
+      $('filters').hidden = false;
+      renderVerses();
+      setStatus(`${countLabel(data.verses.length, MATCHED_VERSE)} — من الفهرس المنشور `
+        + `(${countLabel(data.indexMeta.verses, VERSE_TOTAL)}). الجسر غير متاح، فلم يُبحث في المكتبة الحيّة ولا في الشبكة.`);
+      return;
+    } catch (e2) {
+      if (e2.code !== 'NO_INDEX') {
+        setStatus(`تعذّر البحث: ${e2.message}`, true);
+        return;
+      }
+    }
+    setStatus(`تعذّر البحث: ${e.message}. شغّل جسر الشاملة، أو انشر الفهرس الساكن (tools/pack.js).`, true);
   } finally {
     btn.disabled = false;
   }
