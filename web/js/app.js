@@ -53,6 +53,13 @@ function card(v) {
   const link = s.url ? ` · <a href="${escape(s.url)}" target="_blank" rel="noopener">افتح المصدر ↗</a>` : '';
   const occurrences = v.occurrences > 1 ? ` · ورد في ${toArabicDigits(String(v.occurrences))} مواضع` : '';
 
+  // سنة الوفاة لها مصدرٌ أيضًا — ويُعرض اسم الترجمة التي جاءت منها ليُرى إن أخطأت
+  const ls = v.lifespanSource;
+  const dated = ls
+    ? `<p class="src">التأريخ من ترجمة «${escape(v.poetResolved ?? v.poet)}» — ${escape(ls.label)}${
+        ls.printedPage ? ` ص ${toArabicDigits(String(ls.printedPage))}` : ''}</p>`
+    : (v.poet && !v.deathYear ? '<p class="src unknown">لم تُعرف سنة وفاته، فلم يُذكر عصره.</p>' : '');
+
   el.innerHTML = `
     <p class="verse">${verseHtml(v)}</p>
     <div class="meta">
@@ -61,7 +68,8 @@ function card(v) {
       ${era ? `<span>${escape(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
     </div>
-    <p class="src">${where}${link}${occurrences}</p>`;
+    <p class="src">${where}${link}${occurrences}</p>
+    ${dated}`;
   return el;
 }
 

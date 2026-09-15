@@ -4,11 +4,12 @@
 // ← سنة الوفاة والعصر ← إزالة المكرَّر ← إسنادٌ كامل لكل بيت.
 
 import { McpStdioClient } from './mcp-client.js';
+import { Biography } from './biography.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses } from '../core/attribution.js';
 import { gate } from '../core/verify.js';
 import { dedupe } from '../core/dedupe.js';
-import { eraOf, hijriToGregorian } from '../core/eras.js';
+import { eraOf } from '../core/eras.js';
 import { normalize } from '../core/normalize.js';
 
 // التصنيفات التي يسكنها الشعر في الشاملة — البحث خارجها يُتعب ولا يُثمر.
@@ -28,7 +29,7 @@ export class Shamela {
   constructor(opts) {
     this.client = new McpStdioClient(opts);
     this.pageCache = new Map();   // `${book}:${page}` ← نصّ الصفحة
-    this.authorCache = new Map(); // اسم الشاعر ← { deathYear } | null
+    this.biography = new Biography(this.client);
   }
 
   async health() {
@@ -58,32 +59,9 @@ export class Shamela {
     return r;
   }
 
-  /** سنة وفاة الشاعر من فهرس مؤلّفي الشاملة — لا من تخمين نموذج. */
-  async deathYearOf(poetName) {
-    if (!poetName) return null;
-    const key = normalize(poetName);
-    if (this.authorCache.has(key)) return this.authorCache.get(key);
-
-    let out = null;
-    try {
-      const res = await this.client.callTool('shamela_resolve', {
-        query: poetName, type: 'author', limit: 3, response_format: 'json',
-      });
-      const authors = res?.authors ?? res?.results ?? [];
-      const hit = Array.isArray(authors) ? authors[0] : null;
-      const id = hit?.author_id ?? hit?.id;
-      if (id) {
-        const a = await this.client.callTool('shamela_get_author', {
-          author_id: id, include_books: false, response_format: 'json',
-        });
-        if (a?.death_year) {
-          out = { deathYear: Number(a.death_year), authorId: id, matchedName: a.author_name ?? hit?.author_name ?? null };
-        }
-      }
-    } catch { /* المجهول يبقى مجهولًا — ولا يُملأ بتخمين */ }
-
-    this.authorCache.set(key, out);
-    return out;
+  /** سنة وفاة الشاعر — من فهرس المؤلّفين أو «الأعلام»، ومعها سندها. */
+  deathYearOf(poetName) {
+    return this.biography.deathYearOf(poetName);
   }
 
   /**
@@ -142,9 +120,10 @@ export class Shamela {
     for (const v of merged) {
       const info = v.poet ? await this.deathYearOf(v.poet) : null;
       v.deathYear = info?.deathYear ?? null;
-      v.deathYearGregorian = info?.deathYear ? hijriToGregorian(info.deathYear) : null;
+      v.deathYearGregorian = info?.gregorian ?? null;
       v.era = eraOf(info?.deathYear ?? null);
       v.poetResolved = info?.matchedName ?? null;
+      v.lifespanSource = info?.source ?? null;   // سنةُ الوفاة أيضًا لها مصدرٌ يُذكر
     }
 
     return {

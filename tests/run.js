@@ -14,6 +14,8 @@ import { attributeVerses, poetFromBookName, readAttributionLine } from '../core/
 import { gate } from '../core/verify.js';
 import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
+import { parseLifespan, findLifespanFor } from '../core/lifespan.js';
+import { Shamela } from '../bridge/shamela.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -108,6 +110,53 @@ eq('المخضرم يُمرَّر تمريرًا', eraOf(20, { mukhadram: true }
 eq('★ بلا سنةٍ لا عصر', eraOf(null), null);
 eq('الهجري إلى الميلادي', hijriToGregorian(354), 965);
 eq('المجهول يُصرَّح به', lifespanLabel(null), 'غير معروف');
+
+// ── قراءة التراجم ─────────────────────────────────────────────────────────
+const alaamPage = 'ما اختلف به الحنفية مع الإمام الشافعيّ (١) . أَبُو الطَّيِّبِ المُتَنَبِّي. '
+  + '(٣٠٣ - ٣٥٤ هـ = ٩١٥ - ٩٦٥ م) أحمد بن الحسين بن الحسن بن عبد الصمد الجعفي';
+eq('سنة الوفاة من «الأعلام»', parseLifespan(alaamPage)?.deathYear, 354);
+eq('وسنة المولد معها', parseLifespan(alaamPage)?.birthYear, 303);
+eq('والميلادي كما كتبه الزركلي', parseLifespan(alaamPage)?.gregorian?.death, 965);
+eq('صيغة «(ت ٤٠٥ هـ)»', parseLifespan('فلان (ت ٤٠٥ هـ)')?.deathYear, 405);
+eq('«٠٠٠» مولدٌ غير معروف', parseLifespan('فلان (٠٠٠ - ٣٢٠ هـ)')?.birthYear, null);
+eq('الترجمة تخصّ صاحبها', findLifespanFor('المتنبي', alaamPage)?.deathYear, 354);
+ok('★ الاسم المجاور لا تُنسب إليه وفاة غيره',
+  findLifespanFor('الشافعي', alaamPage) === null,
+  'الشافعيّ ذيلُ الترجمة السابقة — لا صاحبَ هذه');
+ok('واسمٌ غائبٌ عن الصفحة لا يُؤرَّخ', findLifespanFor('جرير', alaamPage) === null);
+
+// ── التأريخ عبر الجسر (على خادمٍ مزيَّفٍ ببياناتٍ حقيقية) ──────────────────
+{
+  const s = new Shamela({ command: 'node', args: [path.join(here, 'fake-shamela-mcp.js')] });
+  try {
+    const shawqi = await s.deathYearOf('شوقي');
+    ok('★ «شوقي» لا يُؤخذ من فهرسٍ فيه ثلاثةٌ متساوون',
+      shawqi?.confidence === 'alaam',
+      'أوّلهم «شوقي ضيف» الناقد (ت ١٤٢٦) لا الشاعر — فالفهرس يُترك ويُرجع إلى «الأعلام»');
+    eq('وسنته من «الأعلام» ١٣٥١', shawqi?.deathYear, 1351);
+    eq('وتُذكر الترجمة التي جاءت منها', shawqi?.matchedName, 'أحمد شوقي');
+
+    const jarir = await s.deathYearOf('جرير');
+    eq('«جرير» مطابقٌ قاطعٌ في الفهرس', jarir?.confidence, 'exact');
+    eq('وسنته ١١٠', jarir?.deathYear, 110);
+
+    const mutanabbi = await s.deathYearOf('المتنبي');
+    ok('★ المتنبي ليس في فهرس المؤلّفين — و«الأعلام» يسدّها',
+      mutanabbi?.deathYear === 354 && mutanabbi?.confidence === 'alaam');
+
+    eq('★ ومن لم يوجد يبقى غير معروف', await s.deathYearOf('الفرزدق'), null);
+
+    const out = await s.verses('المطالب التمني', { mode: 'near' });
+    eq('الجسر يُرجع بيتًا واحدًا موثَّقًا', out.verses.length, 1);
+    eq('بقائله', out.verses[0].poet, 'شوقي');
+    eq('وعصره', out.verses[0].era?.name, 'حديث ومعاصر');
+    ok('ومعه دليلٌ من الوثيقة', Boolean(out.verses[0].evidence?.documentId));
+    ok('★ ومؤلّف الكتاب مذكورٌ منفصلًا لا كقائل',
+      out.verses[0].source.bookAuthor === 'عبد العزيز عتيق' && out.verses[0].poet !== 'عبد العزيز عتيق');
+  } finally {
+    s.client.stop();
+  }
+}
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
 const line = '─'.repeat(52);
