@@ -71,7 +71,15 @@
     <p id="council-note" class="hint"></p>
   </section>
 
+  <section id="filters" class="filters" hidden>
+    <span class="filters-label">اعرض:</span>
+    <label class="check"><input type="checkbox" class="trust-filter" value="documented" checked><span>🟢 موثَّق</span></label>
+    <label class="check"><input type="checkbox" class="trust-filter" value="published" checked><span>🟡 منشور</span></label>
+    <label class="check"><input type="checkbox" class="trust-filter" value="circulated" checked><span>🟠 متداوَل</span></label>
+  </section>
+
   <section id="status" class="status" hidden></section>
+  <p id="filter-note"></p>
   <section id="results" class="results"></section>
 </main>
 

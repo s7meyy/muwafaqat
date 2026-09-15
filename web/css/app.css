@@ -133,3 +133,11 @@ button{min-height:44px}
 .chip .n{color:var(--accent);font-size:.82rem;margin-inline-start:6px}
 .chip.agreed{border-color:var(--accent);background:var(--accent-soft)}
 .chip.empty{color:var(--muted);opacity:.65}
+
+/* ── مرشِّح درجة التوثيق ── */
+.filters{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin-top:18px;
+  padding:10px 16px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.filters-label{color:var(--muted);font-size:.9rem}
+.caveat{margin:8px 0 0;font-size:.88rem;color:var(--warn);line-height:1.9}
+.badge.t-nabati{color:var(--info)}
+#filter-note{color:var(--muted);font-size:.86rem;margin-top:8px;text-align:center}

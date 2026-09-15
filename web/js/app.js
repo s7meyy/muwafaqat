@@ -18,6 +18,23 @@ const TRUST = {
   circulated: { cls: 't-circulated', label: '🟠 متداوَل — النسبة غير مؤكَّدة' },
 };
 
+let lastVerses = [];   // تُحفظ ليُعاد العرض عند تغيير المرشِّح بلا بحثٍ جديد
+
+function allowedTrusts() {
+  return new Set([...document.querySelectorAll('.trust-filter:checked')].map((c) => c.value));
+}
+
+function renderVerses() {
+  const allowed = allowedTrusts();
+  const shown = lastVerses.filter((v) => allowed.has(v.source?.trust ?? 'circulated'));
+  results.replaceChildren();
+  for (const v of shown) results.append(card(v));
+
+  const hidden = lastVerses.length - shown.length;
+  const note = $('filter-note');
+  if (note) note.textContent = hidden ? `أُخفي ${ar(String(hidden))} بسبب درجة التوثيق.` : '';
+}
+
 function setStatus(text, isError = false) {
   statusEl.hidden = !text;
   statusEl.textContent = text ?? '';
@@ -52,8 +69,19 @@ function card(v) {
   const s = v.source ?? {};
   const where = s.bookName
     ? `${escape(s.bookName)}${s.printedPage ? ` — ص ${toArabicDigits(String(s.printedPage))}` : ''}`
-    : escape(s.siteName ?? 'مصدر');
-  const link = s.url ? ` · <a href="${escape(s.url)}" target="_blank" rel="noopener">افتح المصدر ↗</a>` : '';
+    : `${escape(s.siteName ?? 'مصدر')}${s.pageTitle ? ` — <bdi dir="auto">${escape(s.pageTitle.slice(0, 60))}</bdi>` : ''}`;
+  const link = s.url
+    ? ` · <a href="${escape(s.url)}" target="_blank" rel="noopener noreferrer">افتح المصدر ↗</a>`
+    : '';
+  // ★ درجةُ «متداوَل» تقول صراحةً إن النسبة غير مؤكَّدة — لا تُخفى في تلميح
+  const caveat = s.trustNote ? `<p class="caveat">${escape(s.trustNote)}</p>` : '';
+  // ★ ما جاء بقرن الأسطر أضعفُ دلالةً من الفاصل الصريح — يُقال لا يُكتم
+  const pairing = s.pairing === 'lines'
+    ? '<p class="caveat">قُرئ بقرن الأسطر المتّفقة الرويّ، لا بفاصلٍ صريحٍ بين الشطرين.</p>'
+    : '';
+  const nabati = v.register === 'nabati'
+    ? `<span class="badge t-nabati">نبطي${v.registerConfidence < 0.6 ? ' (ترجيح)' : ''}</span>`
+    : '';
   const occurrences = v.occurrences > 1 ? ` · ورد في ${countLabel(v.occurrences, PLACE)}` : '';
   // ★ البيت الذي بلغته عدّةُ مداخلَ للمعنى أقربُ موافقةً من بيتٍ بلغه مدخلٌ واحد
   const via = v.matchedQueries?.length > 1
@@ -74,8 +102,10 @@ function card(v) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${escape(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
+      ${nabati}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
+    ${caveat}${pairing}
     ${dated}
     ${via}`;
   return el;
@@ -111,12 +141,27 @@ function renderCouncil(c) {
   $('council-note').textContent = parts.join('، ') + '.';
 }
 
+/** حال البحث في الشبكة — يُقال إن كان معطَّلًا ولماذا. */
+function renderWeb(w) {
+  const el = $('council-note');
+  if (!el) return;
+  if (!w.enabled) {
+    el.textContent += ' ولم يُبحث في الشبكة (لا مزوّد بحثٍ مضبوط) — فالنتائج من المكتبة وحدها، والنبطيُّ مصدرُه الشبكة.';
+    return;
+  }
+  const bits = [`وبُحث في الشبكة عبر ${w.provider}: قُرئت ${countLabel(w.fetched, PAGE)}`];
+  if (w.failed?.length) bits.push(`وتعذّر ${ar(String(w.failed.length))}`);
+  el.textContent += ' ' + bits.join('، ') + '.';
+}
+
 async function search() {
   const query = q.value.trim();
   if (!query) { setStatus('اكتب بيتًا أولًا.', true); return; }
 
   btn.disabled = true;
   results.replaceChildren();
+  lastVerses = [];
+  $('filters').hidden = true;
   setStatus('يبحث في المصادر…');
 
   const useCouncil = $('use-council')?.checked;
@@ -139,6 +184,7 @@ async function search() {
       throw new Error(data.error ?? `خطأ ${res.status}`);
     }
     if (data.council) renderCouncil(data.council);
+    if (data.web) renderWeb(data.web);
 
     if (!data.verses?.length) {
       setStatus(`لم يُوجد بيتٌ موافق — قُرئت ${countLabel(data.pagesRead ?? 0, PAGE)}.${
@@ -150,7 +196,9 @@ async function search() {
       : '';
     const budget = data.budgetExhausted ? ' · بلغ البحث حدَّ الصفحات، وقد يكون وراءه مزيد' : '';
     setStatus(`${countLabel(data.verses.length, MATCHED_VERSE)} — ${countLabel(data.pagesRead, PAGES_READ)}${rejected}${budget}`);
-    for (const v of data.verses) results.append(card(v));
+    lastVerses = data.verses;
+    $('filters').hidden = false;
+    renderVerses();
   } catch (e) {
     setStatus(`تعذّر البحث: ${e.message}. تأكّد أن جسر الشاملة يعمل على جهازك.`, true);
   } finally {
@@ -199,3 +247,7 @@ installApproval({
 });
 
 refreshSearchButton();
+
+for (const c of document.querySelectorAll('.trust-filter')) {
+  c.addEventListener('change', renderVerses);
+}

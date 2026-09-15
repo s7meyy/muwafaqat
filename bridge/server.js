@@ -11,6 +11,7 @@ import { loadConfig } from './config.js';
 import { Shamela, POETRY_CATEGORIES } from './shamela.js';
 import { transcribeImage, availableProviders } from './transcribe.js';
 import { councilSize } from './council.js';
+import { webSearchAvailable, webSearchProvider } from './web.js';
 
 const config = loadConfig();
 const shamela = new Shamela({
@@ -74,6 +75,7 @@ const server = http.createServer(async (req, res) => {
       ok: true, service: 'muwafaqat-bridge',
       transcribers: availableProviders(),   // تعرف الواجهة أتقدر على الصور أم لا
       council: councilSize(),               // وكم عضوًا في مجلس النماذج
+      web: webSearchAvailable() ? webSearchProvider() : null,
     }, corsOrigin);
   }
 
@@ -116,6 +118,8 @@ const server = http.createServer(async (req, res) => {
         const out = await shamela.council(b.query, process.env, {
           queryLimit: Math.min(Number(b.queryLimit ?? 14), 24),
           pageBudget: Math.min(Number(b.pageBudget ?? 60), 120),
+          web: b.web !== false,
+          webQueryLimit: Math.min(Number(b.webQueryLimit ?? 4), 8),
         });
         return send(res, 200, out, corsOrigin);
       } catch (e) {

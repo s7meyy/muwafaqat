@@ -122,10 +122,108 @@ export function extractVerses(pageText) {
         offset: lineStart + Math.max(0, m.index - sadr.length),
         column: Math.max(0, m.index - sadr.length), // موضع البيت في سطره — ما قبله نثرٌ لا شعر
         lineIndex,
+        pairing: 'separator',
       });
     }
   });
 
+  return out;
+}
+
+/**
+ * القافية: الرويُّ ووصلُه — ★ حرفان لا حرف. ★
+ *
+ * الحرف الواحد ضعيفٌ جدًّا: ستةُ أسطرِ نثرٍ تتّفق أواخرها صدفةً («يشبهه»/«جنسه»
+ * كلاهما ينتهي بهاء)، فيُقرأ النثر شعرًا. والحرفان يفصلان: «هه» ليست «سه».
+ * وهما في الشعر الحقيقيّ متّفقان: «القضاء/بقاء/الوفاء» ← «اء»،
+ * و«غلابا/ركابا» ← «با»، و«صبر/الخبر» ← «بر».
+ *
+ * ★ ولا يُطبَّع النصّ هنا ★ — التطبيع يحذف الهمزة، وقافيةُ «القضاء» هي الهمزة نفسها.
+ */
+export function rhymeOf(text) {
+  const t = stripDiacritics(text)
+    .replace(/[^\u0621-\u064A]+$/, '')
+    .replace(/ة$/, 'ه');            // هاء الوصل تُكتب بالوجهين
+  if (!t) return null;
+  return t.length >= 2 ? t.slice(-2) : t;
+}
+
+/**
+ * اقتناصُ الأبيات من صفحات الشبكة.
+ *
+ * مواقعُ الشعر لا تكتب «...» بين الشطرين — تضع كلَّ شطرٍ في عنصرٍ مستقل،
+ * فيصير الشطران سطرين متجاورين. فنقرن السطرين المتجاورين بشرطين:
+ * توازنُهما في عدد الكلمات، ووقوعُهما في ★ تتابعٍ ★ من أمثالهما —
+ * لأن القصيدة أبياتٌ متتالية، والنثرَ لا يجيء أسطرًا قصيرةً متوازنةً متتابعة.
+ *
+ * ★ والفاصلُ الحاسم بين الشعر والنثر: القافية. ★ أعجازُ أبيات القصيدة تتّفق
+ * في حرف رويّها، وأسطرُ النثر لا تتّفق. فلا يُقبل زوجٌ إلا وافق رويُّه رويَّ
+ * زوجٍ آخر في تتابعه — وبهذا لا يُعرض نثرٌ على أنه شعر، وذاك كذبٌ وإن مرّ بالبوابة.
+ *
+ * وما جاء بهذا الطريق يُوسم `pairing: 'lines'` تمييزًا له عمّا جاء بالفاصل
+ * الصريح، فيؤخَّر عنه في الترتيب — فهو أضعفُ دلالةً وإن مرّ بالبوابة.
+ */
+export function extractVersesFromLines(pageText, { minRun = 2 } = {}) {
+  const lines = String(pageText ?? '').replace(/\r/g, '').split('\n');
+  const isHemistich = (line) => {
+    const t = line.trim();
+    if (!t || SEPARATOR.test(t)) return false;
+    const w = wordCount(t);
+    return w >= MIN_WORDS && w <= 10 && isMostlyArabic(t) && !NOT_VERSE.test(normalize(t));
+  };
+
+  // نجمع مواضع الأسطر الصالحة المتتابعة
+  const runs = [];
+  let run = [];
+  lines.forEach((line, i) => {
+    if (isHemistich(line)) run.push(i);
+    else { if (run.length) runs.push(run); run = []; }
+  });
+  if (run.length) runs.push(run);
+
+  /** يقرن أسطر التتابع ابتداءً من موضعٍ ما، ويقيسه بعدد ما اتّفق من قوافيه. */
+  const pairFrom = (r, offset) => {
+    const pairs = [];
+    for (let k = offset; k + 1 < r.length; k += 2) {
+      const sadr = lines[r[k]].trim();
+      const ajz = lines[r[k + 1]].trim();
+      if (!acceptable(sadr, ajz)) continue;
+      pairs.push({ sadr, ajz, lineIndex: r[k], rhyme: rhymeOf(ajz) });
+    }
+    const counts = new Map();
+    for (const p of pairs) if (p.rhyme) counts.set(p.rhyme, (counts.get(p.rhyme) ?? 0) + 1);
+    const dominant = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? null;
+    return { pairs, dominant };
+  };
+
+  const out = [];
+  for (const r of runs) {
+    if (r.length < minRun * 2) continue;
+
+    // ★ سطرٌ دخيلٌ قبل القصيدة يُزيح اقترانَ الأشطر كلها فتختلف القوافي —
+    //   وهذا يقع كثيرًا («السلام عليكم، وجدت هذي الأبيات…» قبل بيتٍ في منتدى).
+    //   فنجرّب الاقتران من الموضعين ونحتكم إلى القافية: أكثرُهما اتّفاقًا هو الصواب.
+    const a = pairFrom(r, 0);
+    const b = pairFrom(r, 1);
+    const best = (b.dominant?.[1] ?? 0) > (a.dominant?.[1] ?? 0) ? b : a;
+    const { pairs, dominant } = best;
+
+    if (pairs.length < 2) continue;
+    if (!dominant || dominant[1] < 2) continue;   // لا قافيةَ مشتركة ⇒ ليس شعرًا
+
+    for (const p of pairs) {
+      if (p.rhyme !== dominant[0]) continue;
+      out.push({
+        sadr: p.sadr, ajz: p.ajz,
+        text: `${p.sadr} ... ${p.ajz}`,
+        plain: `${stripDiacritics(p.sadr).trim()} ... ${stripDiacritics(p.ajz).trim()}`,
+        lineIndex: p.lineIndex,
+        column: 0,
+        pairing: 'lines',
+        rhyme: p.rhyme,
+      });
+    }
+  }
   return out;
 }
 

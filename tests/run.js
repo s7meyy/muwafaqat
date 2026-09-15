@@ -22,6 +22,14 @@ import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
+import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
+import { htmlToText, titleOf, decodeEntities } from '../core/html.js';
+import { extractVersesFromLines, rhymeOf } from '../core/verses.js';
+import { trustOf, siteNameOf, TRUST } from '../core/trust.js';
+import { detectRegister } from '../core/register.js';
+import { poetFromWebPage } from '../core/attribution.js';
+import { isPrivateAddress, assertPublicUrl } from '../bridge/fetch-page.js';
+import { collectFromWeb } from '../bridge/web.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -265,6 +273,101 @@ eq('بلا مفاتيح لا مجلس', councilSize({}), 0);
       ok('والصفحة تُقرأ مرّةً واحدةً مهما تعدّدت الاستعلامات', out.pagesRead === 1);
       ok('ويُذكر لكل مدخلٍ ماذا وجد', out.council.perQuery.every((q) => typeof q.found === 'number'));
     } finally { sh.client.stop(); }
+  } finally { restore(); }
+}
+
+// ── HTML ← نصّ ────────────────────────────────────────────────────────────
+eq('الوسوم تُجرَّد', htmlToText('<p>سطر</p><p>آخر</p>'), 'سطر\nآخر');
+ok('والنصوص البرمجية تُطرح', !htmlToText('<script>var x=1;</script><p>نصّ</p>').includes('var'));
+eq('★ الفراغ بين الأشطر يُسقَط فلا يقطع التتابع',
+  htmlToText('<span>شطر</span><span>عجز</span>').split('\n').length, 2);
+eq('الكيانات تُفكّ', decodeEntities('&laquo;نصّ&raquo;'), '«نصّ»');
+eq('العنوان يُقرأ', titleOf('<title>ديوان الشافعي</title>'), 'ديوان الشافعي');
+
+// ── القافية تفصل الشعر من النثر ───────────────────────────────────────────
+eq('★ القافية حرفان: الرويّ ووصلُه', rhymeOf('وطب نفسا اذا حكم القضاء'), 'اء');
+eq('وتتّفق في أبيات القصيدة', rhymeOf('فما لحوادث الدنيا بقاء'), 'اء');
+eq('★ وتُقرأ بلا تطبيع — التطبيع يحذف الهمزة وهي القافية', rhymeOf('وشيمتك السماحة والوفاء'), 'اء');
+eq('والنبطيّ كذلك', rhymeOf('لكن عسى دربي يجيب الخبر'), 'بر');
+ok('★ وحرفٌ واحدٌ كان يُقرئ النثرَ شعرًا',
+  rhymeOf('وثالث من جنسه') !== rhymeOf('وخامس يشبهه'),
+  'كلاهما ينتهي بهاء، والحرفان يفصلان: «سه» ليست «هه»');
+{
+  const poem = htmlToText(`<div><span>دع الأيام تفعل ما تشاء</span><span>وطب نفسا اذا حكم القضاء</span>
+    <span>ولا تجزع لحادثة الليالي</span><span>فما لحوادث الدنيا بقاء</span>
+    <span>وكن رجلا على الأهوال جلدا</span><span>وشيمتك السماحة والوفاء</span></div>`);
+  eq('قصيدةٌ بلا فاصلٍ صريح تُقتنَص بقرن الأسطر', extractVersesFromLines(poem).length, 3);
+  eq('وتُوسم بطريقها', extractVersesFromLines(poem)[0].pairing, 'lines');
+
+  const prose = htmlToText('<p>هذا كلام</p><p>وهذا كلام آخر</p><p>وثالث من جنسه</p><p>ورابع كذلك تمامًا</p><p>وخامس يشبهه</p><p>وسادس مثله</p>');
+  ok('★ النثر القصير المتوازن لا يُقرأ شعرًا — القافية تمنعه',
+    extractVersesFromLines(prose).length === 0,
+    'عرضُ نثرٍ على أنه شعرٌ كذبٌ وإن مرّ بالبوابة');
+
+  // سطرٌ دخيلٌ قبل القصيدة يُزيح الاقتران — يُعالَج بتجربة الموضعين
+  const withPrefix = htmlToText(`<p>وجدت هذي الأبيات ونسبوها للشافعي</p><div>
+    <span>ولا تر للأعادي قط ذلا</span><span>فإن شماتة الأعدا بلاء</span>
+    <span>ولا ترج السماحة من بخيل</span><span>فما في النار للظمآن ماء</span></div>`);
+  eq('★ والسطر الدخيل لا يُضيّع القصيدة', extractVersesFromLines(withPrefix).length, 2);
+}
+
+// ── درجات التوثيق ─────────────────────────────────────────────────────────
+eq('موقعٌ متخصص = منشور', trustOf('https://www.aldiwan.net/p').key, 'published');
+eq('وتويتر = متداوَل', trustOf('https://x.com/a/status/1').key, 'circulated');
+eq('والمنتدى كذلك', trustOf('https://x.example.com/showthread.php?t=1').key, 'circulated');
+eq('★ والمجهول يُعامَل متداوَلًا — الأحوطُ أصدق', trustOf('https://unknown.tld/p').key, 'circulated');
+ok('و«متداوَل» يقول صراحةً إن النسبة غير مؤكَّدة', /غير مؤكَّدة/.test(TRUST.circulated.note));
+eq('واسم الموقع يُعرَّب', siteNameOf('https://aldiwan.net/x'), 'الديوان');
+ok('والموثَّق أعلى رتبةً من المنشور', TRUST.documented.rank > TRUST.published.rank);
+
+// ── النبطي ────────────────────────────────────────────────────────────────
+eq('علاماتٌ قاطعة ⇒ نبطي', detectRegister('اللي يبي العالي عليه السهر').register, 'nabati');
+ok('وبثقةٍ عالية', detectRegister('اللي يبي العالي عليه السهر').confidence > 0.8);
+eq('وعلامتان مرجِّحتان ⇒ نبطي بترجيح', detectRegister('ودي اقول وخاطري عسى').register, 'nabati');
+eq('★ وخلوُّ البيت من التشكيل ليس دليلًا على النبطية',
+  detectRegister('وما نيل المطالب بالتمني ولكن تؤخذ الدنيا غلابا').register, 'fasih');
+ok('★ ولا تبلغ الثقة في الفصاحة حدَّ الجزم',
+  detectRegister('وما نيل المطالب بالتمني').confidence < 1);
+
+// ── نسبة صفحات الويب ──────────────────────────────────────────────────────
+eq('العنوان ينسب', poetFromWebPage({ title: 'دع الأيام - الإمام الشافعي' }).poet, 'الإمام الشافعي');
+eq('★ ولام النسبة الملتصقة تُحلّ', poetFromWebPage({ title: 'قصيدة للمتنبي في المجد' }).poet, 'المتنبي');
+eq('واسم الموقع لا يُنسب إليه شعر', poetFromWebPage({ title: 'قصائد وأشعار | الديوان' }).poet, null);
+
+// ── حراسة الجلب ───────────────────────────────────────────────────────────
+ok('★ العناوين الداخلية تُمنع',
+  ['127.0.0.1', '10.0.0.5', '192.168.1.1', '169.254.169.254', '172.16.0.1', '::1'].every(isPrivateAddress),
+  'الجسر يعمل على جهاز صاحب المكتبة، والروابط تأتيه من نتائج بحثٍ خارجية');
+ok('والعامّة تُقبل', !isPrivateAddress('8.8.8.8') && !isPrivateAddress('93.184.216.34'));
+{
+  const blocked = [];
+  for (const u of ['http://localhost:9/x', 'file:///etc/passwd', 'https://169.254.169.254/', 'http://192.168.0.1/']) {
+    try { await assertPublicUrl(u); } catch { blocked.push(u); }
+  }
+  eq('وكلُّ رابطٍ خطر يُردّ', blocked.length, 4);
+}
+
+// ── الشبكة من طرفها إلى طرفها ─────────────────────────────────────────────
+{
+  const restore = installFakeWeb();
+  try {
+    const mk = () => ({ documents: [], candidates: [], bodies: new Map(), citations: new Map(), pagesLeft: 50 });
+    const a = mk();
+    await collectFromWeb('الأيام القضاء', a, FAKE_WEB_ENV, { lookup: fakeLookup });
+    eq('موقعُ الشعر يُعطي بيتًا منسوبًا', a.candidates.length, 1);
+    eq('بدرجة «منشور»', a.candidates[0].source.trust, 'published');
+    eq('وبقائله من العنوان', a.candidates[0].poet, 'الإمام الشافعي');
+    ok('ومعه رابطه', /^https:\/\//.test(a.candidates[0].source.url));
+
+    const b = mk();
+    await collectFromWeb('السهر المراقي', b, FAKE_WEB_ENV, { lookup: fakeLookup });
+    eq('★ والنبطي مصدره الشبكة لا المكتبة', b.candidates[0]?.register, 'nabati');
+    eq('ويُوسم «متداوَلًا»', b.candidates[0]?.source.trust, 'circulated');
+    eq('وقائله غير معروف فلا يُخمَّن', b.candidates[0]?.poet, null);
+
+    const c = mk();
+    await collectFromWeb('الصبر مفتاح الفرج', c, FAKE_WEB_ENV, { lookup: fakeLookup });
+    eq('★ وصفحةُ نثرٍ لا تُعطي شعرًا', c.candidates.length, 0);
   } finally { restore(); }
 }
 

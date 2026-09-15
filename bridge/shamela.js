@@ -6,11 +6,14 @@
 import { McpStdioClient } from './mcp-client.js';
 import { Biography } from './biography.js';
 import { expand } from './council.js';
+import { collectFromWeb, webSearchAvailable } from './web.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses } from '../core/attribution.js';
 import { gate } from '../core/verify.js';
 import { dedupe } from '../core/dedupe.js';
 import { eraOf } from '../core/eras.js';
+import { TRUST } from '../core/trust.js';
+import { detectRegister } from '../core/register.js';
 import { normalize, fingerprint } from '../core/normalize.js';
 import { similarity } from '../core/dedupe.js';
 
@@ -147,9 +150,19 @@ export class Shamela {
       v.poetResolved = info?.matchedName ?? null;
       v.lifespanSource = info?.source ?? null;
 
-      // الترتيب: المداخل التي بلغته أولًا (تُجمع في dedupe)، ثم تعدّد مصادره،
+      if (!v.register) {
+        const reg = detectRegister(v.text);
+        v.register = reg.register;
+        v.registerConfidence = reg.confidence;
+      }
+
+      // الترتيب: المداخل التي بلغته أولًا، ثم تعدّد مصادره، ثم درجة توثيقه،
       // ثم كونه معروف القائل. ولا شيء من هذا يُدخل بيتًا لم يمرّ بالبوابة.
-      v.score = ((v.matchedQueries?.length || 1) * 2) + (v.sources?.length ?? 1) + (v.poet ? 1 : 0);
+      // و«قرنُ الأسطر» أضعفُ من الفاصل الصريح، فيُنقَص.
+      const trustRank = TRUST[v.source?.trust]?.rank ?? 1;
+      const weakPairing = v.source?.pairing === 'lines' ? -1 : 0;
+      v.score = ((v.matchedQueries?.length || 1) * 2)
+        + (v.sources?.length ?? 1) + trustRank + (v.poet ? 1 : 0) + weakPairing;
     }
     merged.sort((a, b) => b.score - a.score);
 
@@ -172,7 +185,12 @@ export class Shamela {
     const plan = await expand(verse, env, { limit: opts.queryLimit ?? 14 });
     const ctx = this.newContext(opts.pageBudget ?? COUNCIL_PAGE_BUDGET);
 
+    const useWeb = opts.web !== false && webSearchAvailable(env);
+    const webQueryLimit = opts.webQueryLimit ?? 4;
+    const webStats = { enabled: useWeb, searched: 0, fetched: 0, failed: [], provider: null };
+
     const perQuery = [];
+    let webUsed = 0;
     for (const q of plan.queries) {
       if (ctx.pagesLeft <= 0) { ctx.budgetExhausted = true; break; }
       const before = ctx.candidates.length;
@@ -183,10 +201,30 @@ export class Shamela {
           categories: opts.categories ?? POETRY_CATEGORIES,
         });
       } catch { /* استعلامٌ سقط، والمجلس يمضي */ }
-      perQuery.push({ ...q, totalHits, found: ctx.candidates.length - before });
+      const fromShamela = ctx.candidates.length - before;
+
+      // الشبكة أبطأ وأضعفُ توثيقًا، فتُستعمل في أقوى المداخل وحدها.
+      // ★ والنبطي لا يكاد يوجد إلا فيها — فهي ليست تكميلًا بل هي مصدره الوحيد. ★
+      let fromWeb = 0;
+      if (useWeb && webUsed < webQueryLimit) {
+        webUsed++;
+        const mark = ctx.candidates.length;
+        try {
+          const st = await collectFromWeb(q.text, ctx, env, { maxPages: opts.webPages ?? 5 });
+          webStats.searched += st.searched;
+          webStats.fetched += st.fetched;
+          webStats.failed.push(...st.failed);
+          webStats.provider = st.provider;
+        } catch (e) {
+          webStats.failed.push({ query: q.text, error: String(e?.message ?? e) });
+        }
+        fromWeb = ctx.candidates.length - mark;
+      }
+
+      perQuery.push({ ...q, totalHits, found: fromShamela + fromWeb, fromShamela, fromWeb });
     }
 
     const out = await this.finalize(ctx, { excludeVerse: verse });
-    return { verse, council: { ...plan, perQuery }, ...out };
+    return { verse, council: { ...plan, perQuery }, web: webStats, ...out };
   }
 }
