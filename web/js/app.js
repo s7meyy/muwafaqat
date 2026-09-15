@@ -2,6 +2,8 @@
 // الصور وشاشة الاعتماد في المرحلة الثانية، وزرُّ البحث يبقى معطَّلًا حتى الاعتماد.
 
 import { toArabicDigits } from '../../core/normalize.js';
+import { countLabel, VERSE, PAGE, PLACE, SUGGESTION } from '../../core/plural.js';
+import { install as installApproval } from './approve.js';
 
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
 const TOKEN = localStorage.getItem('muwafaqat.token') || '';
@@ -51,7 +53,7 @@ function card(v) {
     ? `${escape(s.bookName)}${s.printedPage ? ` — ص ${toArabicDigits(String(s.printedPage))}` : ''}`
     : escape(s.siteName ?? 'مصدر');
   const link = s.url ? ` · <a href="${escape(s.url)}" target="_blank" rel="noopener">افتح المصدر ↗</a>` : '';
-  const occurrences = v.occurrences > 1 ? ` · ورد في ${toArabicDigits(String(v.occurrences))} مواضع` : '';
+  const occurrences = v.occurrences > 1 ? ` · ورد في ${countLabel(v.occurrences, PLACE)}` : '';
 
   // سنة الوفاة لها مصدرٌ أيضًا — ويُعرض اسم الترجمة التي جاءت منها ليُرى إن أخطأت
   const ls = v.lifespanSource;
@@ -91,13 +93,13 @@ async function search() {
     const data = await res.json();
 
     if (!data.verses?.length) {
-      setStatus(`لم يُوجد بيتٌ موافق في ${toArabicDigits(String(data.pagesRead ?? 0))} صفحةٍ قُرئت. جرّب كلماتٍ أخرى من معنى البيت.`);
+      setStatus(`لم يُوجد بيتٌ موافق — ${countLabel(data.pagesRead ?? 0, PAGE)} قُرئت. جرّب كلماتٍ أخرى من معنى البيت.`);
       return;
     }
     const rejected = data.rejectedCount
-      ? ` · ${toArabicDigits(String(data.rejectedCount))} مقترحًا لم يثبت في مصدرٍ فلم يُعرض`
+      ? ` · ${countLabel(data.rejectedCount, SUGGESTION)} لم يثبت في مصدرٍ فلم يُعرض`
       : '';
-    setStatus(`${toArabicDigits(String(data.verses.length))} بيتًا موافقًا، من ${toArabicDigits(String(data.pagesRead))} صفحةٍ قُرئت${rejected}`);
+    setStatus(`${countLabel(data.verses.length, VERSE)} موافقًا، من ${countLabel(data.pagesRead, PAGE)}${rejected}`);
     for (const v of data.verses) results.append(card(v));
   } catch (e) {
     setStatus(`تعذّر البحث: ${e.message}. تأكّد أن جسر الشاملة يعمل على جهازك.`, true);
@@ -108,4 +110,42 @@ async function search() {
 
 btn.addEventListener('click', search);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) search(); });
-hint.textContent = TOKEN ? '' : 'لم يُضبط مفتاح الجسر بعد — انظر bridge/README.md';
+
+// ── التبويبان: نصّ · صورة ──────────────────────────────────────────────────
+const tabs = [
+  { btn: $('tab-text'), pane: $('pane-text'), mode: 'text' },
+  { btn: $('tab-image'), pane: $('pane-image'), mode: 'image' },
+];
+let mode = 'text';
+
+function refreshSearchButton() {
+  // في مسار الصورة لا يُفتح البحث إلا بعد الاعتماد — وهذا قيدٌ صريحٌ لا نصيحة
+  const ready = mode === 'text' ? Boolean(q.value.trim()) : imageApproved;
+  btn.disabled = !ready;
+  hint.textContent = mode === 'image' && !imageApproved
+    ? 'اعتمِد التفريغ أولًا في تبويب «صورة».'
+    : (TOKEN ? '' : 'لم يُضبط مفتاح الجسر — انظر bridge/README.md');
+}
+
+let imageApproved = false;
+
+for (const t of tabs) {
+  t.btn?.addEventListener('click', () => {
+    mode = t.mode;
+    for (const o of tabs) {
+      o.btn.setAttribute('aria-selected', String(o === t));
+      o.pane.hidden = o !== t;
+    }
+    refreshSearchButton();
+  });
+}
+q.addEventListener('input', refreshSearchButton);
+
+installApproval({
+  bridge: BRIDGE,
+  token: TOKEN,
+  onApproved: (text) => { imageApproved = true; q.value = text; refreshSearchButton(); },
+  onUnapproved: () => { imageApproved = false; refreshSearchButton(); },
+});
+
+refreshSearchButton();

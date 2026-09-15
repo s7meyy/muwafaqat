@@ -47,6 +47,13 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | `ALLOWED_ORIGINS` | الكل | نطاقاتٌ مفصولةٌ بفاصلة |
 | `RATE_LIMIT_PER_MINUTE` | `60` | حدّ الطلبات لكل عنوان |
 | `MCP_TIMEOUT_MS` | `60000` | مهلة نداء الشاملة |
+| `GEMINI_API_KEY` | — | تفريغ الصور ([مجاني](https://aistudio.google.com/apikey)) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | غيّره إن تبدّل اسم النموذج |
+| `OPENROUTER_API_KEY` | — | التفريغ المُقابِل — به تُكشف مواضع الشكّ |
+| `OPENROUTER_VISION_MODEL` | `qwen/qwen2.5-vl-72b-instruct:free` | نموذجٌ بصريٌّ مجاني |
+
+**بلا مفتاحٍ للتفريغ** يعمل كل شيءٍ آخر، و`/v1/transcribe` يردّ `501` بسببٍ مكتوب،
+وتبويب الصورة في الموقع يقول ما ينقصه بدل أن ينكسر.
 
 ## النقاط
 
@@ -56,6 +63,7 @@ export ALLOWED_ORIGINS="https://muwafaqat.example,http://localhost:8080"
 | `GET /v1/health` | حال المكتبة: عدد الكتب والصفحات المفهرسة |
 | `POST /v1/search` | بحثٌ خام: `{query, mode:'near'\|'phrase'\|'words', distance, limit, categories}` |
 | **`POST /v1/verses`** | **الأهمّ** — استعلامٌ يدخل، أبياتٌ موثَّقةٌ تخرج |
+| `POST /v1/transcribe` | تفريغ صورة بنموذجين: `{image (base64), mimeType}` |
 | `POST /v1/page` | نصّ صفحة: `{book_id, page_id}` |
 
 ### مثال

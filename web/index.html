@@ -14,14 +14,51 @@
 </header>
 
 <main>
-  <section class="box" id="input-box">
+  <div class="tabs" role="tablist" aria-label="طريقة الإدخال">
+    <button id="tab-text" type="button" role="tab" aria-selected="true" aria-controls="pane-text">نصّ</button>
+    <button id="tab-image" type="button" role="tab" aria-selected="false" aria-controls="pane-image">صورة</button>
+  </div>
+
+  <section class="box" id="pane-text" role="tabpanel" aria-labelledby="tab-text">
     <label for="q">البيت</label>
     <textarea id="q" rows="3" placeholder="وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا" spellcheck="false"></textarea>
-    <div class="row">
-      <button id="search" type="button">ابحث عن الموافقات</button>
-      <span class="hint" id="hint"></span>
+  </section>
+
+  <section class="box" id="pane-image" role="tabpanel" aria-labelledby="tab-image" hidden>
+    <div id="drop" class="drop" tabindex="0" role="button"
+         aria-label="اختر صورةً أو أفلتها هنا">
+      <p class="drop-title">أفلِت صورة الصفحة هنا</p>
+      <p class="drop-sub">أو اضغط لاختيارها من جهازك · JPG أو PNG</p>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+
+    <figure id="preview" class="preview" hidden>
+      <img id="preview-img" alt="الصورة التي رُفعت">
+      <figcaption><button id="change-image" type="button" class="linkish">اختر صورةً أخرى</button></figcaption>
+    </figure>
+
+    <div id="approve" class="approve" hidden>
+      <div class="approve-head">
+        <h2>راجِع التفريغ قبل البحث</h2>
+        <p id="approve-summary" class="hint"></p>
+      </div>
+
+      <div id="diff" class="diff" aria-live="polite"></div>
+
+      <label for="transcript">النصّ الذي سيُبحث به — عدِّله كما تشاء</label>
+      <textarea id="transcript" rows="5" spellcheck="false"></textarea>
+
+      <div class="row">
+        <button id="approve-btn" type="button" class="ok">اعتمدتُ التفريغ</button>
+        <span class="hint">لا يبدأ البحث قبل اعتمادك.</span>
+      </div>
     </div>
   </section>
+
+  <div class="row search-row">
+    <button id="search" type="button">ابحث عن الموافقات</button>
+    <span class="hint" id="hint"></span>
+  </div>
 
   <section id="status" class="status" hidden></section>
   <section id="results" class="results"></section>

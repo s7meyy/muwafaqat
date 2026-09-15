@@ -6,6 +6,10 @@
   "description": "الموافقات — أدخل بيتًا، تخرج أبياتٌ توافقه في المعنى، كلٌّ بقائله وعصره ومصدره",
   "scripts": {
     "bridge": "node bridge/server.js",
-    "test": "node tests/run.js"
+    "test": "node tests/run.js",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
   }
 }

@@ -9,6 +9,7 @@
 import http from 'node:http';
 import { loadConfig } from './config.js';
 import { Shamela, POETRY_CATEGORIES } from './shamela.js';
+import { transcribeImage, availableProviders } from './transcribe.js';
 
 const config = loadConfig();
 const shamela = new Shamela({
@@ -47,7 +48,7 @@ function readBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 1e6) { reject(new Error('الطلب أكبر من اللازم')); req.destroy(); }
+      if (data.length > 12e6) { reject(new Error('الطلب أكبر من اللازم')); req.destroy(); }
     });
     req.on('end', () => {
       if (!data) return resolve({});
@@ -67,7 +68,12 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host}`);
 
-  if (url.pathname === '/v1/ping') return send(res, 200, { ok: true, service: 'muwafaqat-bridge' }, corsOrigin);
+  if (url.pathname === '/v1/ping') {
+    return send(res, 200, {
+      ok: true, service: 'muwafaqat-bridge',
+      transcribers: availableProviders(),   // تعرف الواجهة أتقدر على الصور أم لا
+    }, corsOrigin);
+  }
 
   const auth = req.headers.authorization ?? '';
   if (auth !== `Bearer ${config.token}`) return send(res, 401, { error: 'مفتاحٌ غير صحيح' }, corsOrigin);
@@ -97,6 +103,18 @@ const server = http.createServer(async (req, res) => {
         categories: b.categories ?? POETRY_CATEGORIES,
       });
       return send(res, 200, out, corsOrigin);
+    }
+
+    // تفريغ صورة — والنتيجة اقتراحٌ لا يُبحث به حتى يعتمده المستخدم بيده
+    if (url.pathname === '/v1/transcribe' && req.method === 'POST') {
+      const b = await readBody(req);
+      if (!b.image) return send(res, 400, { error: 'image مطلوبة (base64)' }, corsOrigin);
+      try {
+        const out = await transcribeImage({ imageBase64: b.image, mimeType: b.mimeType });
+        return send(res, 200, out, corsOrigin);
+      } catch (e) {
+        return send(res, e.code === 'NO_PROVIDER' ? 501 : 502, { error: e.message, code: e.code }, corsOrigin);
+      }
     }
 
     if (url.pathname === '/v1/page' && req.method === 'POST') {

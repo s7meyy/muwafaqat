@@ -16,6 +16,9 @@ import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
 import { parseLifespan, findLifespanFor } from '../core/lifespan.js';
 import { Shamela } from '../bridge/shamela.js';
+import { diffTranscripts, disagreementCount, agreementRatio, proposedText } from '../core/transcript.js';
+import { countLabel, VERSE, PAGE } from '../core/plural.js';
+import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -156,6 +159,49 @@ ok('واسمٌ غائبٌ عن الصفحة لا يُؤرَّخ', findLifespanFo
   } finally {
     s.client.stop();
   }
+}
+
+// ── جمع العربية ───────────────────────────────────────────────────────────
+eq('صفر: صيغةٌ خاصة', countLabel(0, VERSE), 'لم يوجد بيت');
+eq('واحد', countLabel(1, VERSE), 'بيتٌ واحد');
+eq('★ المثنّى صيغةٌ مستقلّة', countLabel(2, VERSE), 'بيتان');
+eq('القلّة ٣-١٠', countLabel(7, VERSE), '٧ أبيات');
+eq('★ الكثرة ١١+ تُنصب مفردًا', countLabel(11, VERSE), '١١ بيتًا');
+eq('والمئة مفردٌ مجرور', countLabel(100, VERSE), '١٠٠ بيت');
+eq('والصفحة كذلك', countLabel(2, PAGE), 'صفحتان');
+
+// ── مقارنة التفريغين ──────────────────────────────────────────────────────
+{
+  const A = 'وَما نَيلُ المَطالِبِ بِالتَمَنّي ... وَلَكِن تُؤخَذُ الدُنيا غِلابا';
+  const B = 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غصابا';
+  const segs = diffTranscripts(A, B);
+  eq('اختلاف الكلمة يُعدّ موضعًا واحدًا', disagreementCount(segs), 1);
+  ok('★ اختلاف التشكيل وحده ليس اختلافَ كلمة',
+    segs.some((s) => s.type === 'vowel'),
+    'النموذجان قرآ «نَيلُ» و«نيل» — الحروف واحدة');
+  ok('والكلمة المختلفة تحمل القراءتين',
+    segs.some((s) => s.type === 'word' && s.a[0] === 'غِلابا' && s.b[0] === 'غصابا'));
+  ok('نسبة الاتفاق بين ٠ و١', agreementRatio(segs) > 0.8 && agreementRatio(segs) < 1);
+  ok('★ المقترح نسخةُ الأول لا خليطًا — ولا يُختار عن المستخدم',
+    proposedText(segs).includes('غِلابا') && !proposedText(segs).includes('غصابا'));
+
+  // ★ البيت سطرٌ مستقل ★
+  const two = diffTranscripts(
+    'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا\nوما استعصى على قوم منال ... إذا الإقدام كان لهم ركابا',
+    'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غصابا\nوما استعصى على قوم منال ... إذا الإقدام كان لهم ركابا');
+  eq('★ الأبيات لا تُدمج في سطر', proposedText(two).split('\n').length, 2);
+  eq('وموضع الاختلاف واحد', disagreementCount(two), 1);
+
+  const add = diffTranscripts('قف نبك من ذكرى حبيب ومنزل', 'قف نبك من ذكرى الحبيب');
+  ok('الزيادة والنقص يُرصدان', add.some((s) => s.type === 'word' && s.a.length !== s.b.length));
+}
+
+// ── التفريغ بلا مفاتيح ────────────────────────────────────────────────────
+eq('بلا مفاتيح لا مزوّد', availableProviders({}).length, 0);
+{
+  let code = null;
+  try { await transcribeImage({ imageBase64: 'x' }, {}); } catch (e) { code = e.code; }
+  eq('★ ويُصرَّح بالسبب لا يُصمَت عليه', code, 'NO_PROVIDER');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
