@@ -77,6 +77,8 @@ const built = buildIndex(verses, { neighbors });
 //   وإنما «ليس فيما فُهرس». (كم كتابًا؟ وكم شاعرًا؟)
 built.meta.books = new Set(verses.map((v) => v.source?.bookName).filter(Boolean)).size;
 built.meta.poets = new Set(verses.map((v) => v.poet).filter(Boolean)).size;
+// ★ وما لم يُفهرس يُقال كذلك ★ — فلا يحسب الباحث سكوتَ الفهرس سكوتَ الشعر
+built.meta.categories = [...new Set(verses.map((v) => v.source?.category).filter(Boolean))];
 
 fs.mkdirSync(OUT, { recursive: true });
 const tok = writeShards(path.join(OUT, 't'), built.tokens);

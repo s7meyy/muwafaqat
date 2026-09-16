@@ -225,6 +225,8 @@ export function extractVerses(pageText) {
 
   // ★ الرجزُ المشطور: بيتٌ في كل سطر، ولا فاصلَ فيه. ★
   out.push(...extractMashtur(lines, out));
+  // ★ والشاهدُ داخل النثر: أداةُ نسبةٍ ثم بيتٌ بلا فاصلٍ ولا سطرٍ مستقلّ. ★
+  out.push(...extractInlineShahid(lines, out));
   out.sort((a, b) => a.lineIndex - b.lineIndex);
   return out;
 }
@@ -294,6 +296,64 @@ function extractMashtur(lines, already) {
     run.push(i);
   });
   flush();
+  return out;
+}
+
+// ★ أداةُ نسبةٍ صريحةٌ ★ إلى الشعر، لا إلى القول مطلقًا.
+//   جُرّبت أوّلًا بـ«قال + اسم» فالتقطت من شرح ابن بطال: «وقال عطية: مواضع
+//   السجود أشد بياضًا يوم القيامة» — وهو نثرٌ مرويّ لا شعر. ★ فلا يُقبل إلا
+//   ما صرّح بالشعر: «قول الشاعر» أو «أنشد». ★ وفي كتب الشرح والفقه يقع
+//   «قال فلان:» في كل سطرٍ تقريبًا، فقبولُه يملأ الفهرس نثرًا.
+const SHAHID_CUE = /(?:^|[\s،؛])((?:و|ف)?(?:ومنه\s+|منه\s+)?(?:قول|قال|كقول|وقول|قوله)\s+(?:ال)?(?:شاعر|آخر|بعضهم|القائل|أعرابي)|(?:و|ف)?(?:أنشد|أنشدنا|أنشدني|ينشد|وأنشد)(?:\s+[\u0621-\u064A]{2,}){0,3})\s*:\s*/g;
+
+const INLINE_MIN_WORDS = 6;
+const INLINE_MAX_WORDS = 18;
+
+/**
+ * ★ البِنية الثامنة: شاهدٌ داخل النثر بلا فاصلٍ بين الشطرين. ★
+ *
+ * هكذا يسوق ابنُ بطال الشاهدَ في «شرح صحيح البخاري»:
+ *   «…أى تصور لا تخترع ومنه ★قول الشاعر:★ ولأنت تفرى ما خلقت وبعض القوم
+ *    يخلق ثم لا يفرى»
+ * في وسط سطرٍ نثريّ، بلا فاصلٍ، وبلا سطرٍ مستقلّ، وبلا تكرار قافية. وأداةُ
+ * الاقتناص كلُّها قائمةٌ على واحدٍ من هذه الثلاثة — فهذا لا تراه البتّة.
+ * وهو أشيعُ صور الشاهد في كتب الشرح والتفسير والفقه (١٣٩١ صفحةً في شروح
+ * الحديث المنزَّلة وحدها فيها «قول الشاعر»).
+ *
+ * ★ ولا يُقسم شطرين. ★ البيتُ في المثال ★مدوَّر★ («وبعـ/ـض القوم»)، وأيُّ
+ * قسمةٍ آليّةٍ تخطئ موضعَ القطع فتُحرّف النصّ. فيُنقل كما ورد، ويُوسم:
+ * «لم يُفصل شطراه في المطبوع» — وهو صدقٌ في النقل، والبحثُ يجده كما هو.
+ */
+function extractInlineShahid(lines, already) {
+  const taken = new Set(already.map((v) => v.lineIndex));
+  const out = [];
+
+  lines.forEach((line, i) => {
+    if (taken.has(i) || SEPARATOR.test(line)) return;
+    SHAHID_CUE.lastIndex = 0;
+    let m;
+    while ((m = SHAHID_CUE.exec(line)) !== null) {
+      const after = line.slice(m.index + m[0].length);
+      // ينتهي الشاهد بآخر السطر أو بعلامةِ وقفٍ صريحة
+      const stop = /[.،؛]\s|\s(?:قال|وقال|فقال|يعني|أي\s)/.exec(after);
+      const text = (stop ? after.slice(0, stop.index) : after).trim()
+        .replace(/[\s،؛.:\-]+$/, '');
+      const words = wordCount(text);
+      if (words < INLINE_MIN_WORDS || words > INLINE_MAX_WORDS) continue;
+      if (!isMostlyArabic(text) || NOT_VERSE.test(normalize(text))) continue;
+      out.push({
+        doubted: false, footnote: null,
+        sadr: text, ajz: '', text,
+        joined: null, mudawwar: false, splitWord: null,
+        plain: stripDiacritics(text).trim(),
+        offset: 0, column: m.index, lineIndex: i,
+        pairing: 'inline',
+        // ★ يُقال للقارئ لِمَ خرج بلا شطرين ★
+        unsplit: true,
+        numbered: false,
+      });
+    }
+  });
   return out;
 }
 

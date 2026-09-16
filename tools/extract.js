@@ -206,6 +206,7 @@ async function main() {
           text: v.text, poet: v.poet, poetSource: v.poetSource,
           doubted: v.doubted || undefined,
           mashtur: v.mashtur || undefined,
+          unsplit: v.unsplit || undefined,
           meter: v.meter ?? undefined, meterSource: v.meter ? 'book' : undefined,
           purpose: v.purpose ?? undefined, occasion: v.occasion ?? undefined,
           glosses: note?.glosses?.length ? note.glosses.slice(0, 3) : undefined,

@@ -324,3 +324,4 @@ button.stopping{background:var(--danger)}
 .results-head{text-align:center;font-size:1rem;color:var(--muted);margin:18px 0 4px;font-weight:400}
 .more-poets{display:inline}
 .more-poets summary{display:inline;cursor:pointer;color:var(--accent)}
+.scope-missing{color:var(--warn);opacity:.9}

@@ -149,6 +149,8 @@ export function toRecord(verse, id) {
     w: verse.doubted ? 1 : 0,
     // بيتٌ مشطور (أرجوزة): شطرٌ واحدٌ تامّ، لا بيتٌ نقص عجزُه
     s: verse.mashtur ? 1 : 0,
+    // شاهدٌ نُقل كما ورد في النثر، بلا فصلٍ بين شطريه
+    e: verse.unsplit ? 1 : 0,
     // ★ ما كتبه الكتاب نفسه: بحرُ القصيدة وغرضُها ومناسبتُها ★ — لا تخمين
     z: verse.meter ?? null,
     j: verse.purpose ?? null,
@@ -181,6 +183,7 @@ export function fromRecord(rec) {
     register: rec.r ? 'nabati' : 'fasih',
     doubted: Boolean(rec.w),
     mashtur: Boolean(rec.s),
+    unsplit: Boolean(rec.e),
     meter: rec.z ?? null,
     meterSource: rec.z ? 'book' : null,
     purpose: rec.j ?? null,

@@ -12,6 +12,7 @@ import { toArabicDigits as ar, fingerprint, stripDiacritics } from '../../core/n
 import { matchReason, markShared } from '../../core/why.js';
 import { citationOf } from '../../core/citation.js';
 import { rhyme, meterOf } from '../../core/prosody.js';
+import { missingCategories } from '../../core/categories.js';
 import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic, inputKind } from '../../core/input.js';
@@ -182,6 +183,9 @@ function card(v, rank = 0) {
   // ★ المشطور بيتٌ تامّ لا بيتٌ نقص عجزُه ★ — والأرجوزة تُنظم هكذا
   const mashtur = v.mashtur
     ? '<span class="badge t-mudawwar" title="بيتٌ مشطور: شطرٌ واحدٌ تامّ، وهو بناءُ الأرجوزة">مشطور</span>' : '';
+  // ★ نُقل كما ورد في النثر: يُقال، ولا يُقسم شطرين بالتخمين ★
+  const unsplit = v.unsplit
+    ? '<span class="badge t-mudawwar" title="ساقه الكتابُ داخل نثره بلا فصلٍ بين الشطرين، فنُقل كما ورد">لم يُفصل شطراه</span>' : '';
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
 
@@ -269,7 +273,7 @@ function card(v, rank = 0) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${esc(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
-      ${nabati}${mashtur}${mudawwar}${agreed}${bySense}
+      ${nabati}${mashtur}${unsplit}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
     ${context}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}
@@ -370,6 +374,16 @@ async function renderScope() {
     if (!Number.isNaN(d.getTime())) bits.push(`· فُهرس في ${ar(d.toLocaleDateString('ar-EG'))}`);
   }
   el.textContent = bits.join(' ') + '.';
+
+  // ★ وما لم يُبحث فيه يُقال ★ — فلا يحسب الباحث سكوتَ الفهرس سكوتَ الشعر
+  const missing = missingCategories(meta.categories ?? []);
+  if (missing.length) {
+    const note = document.createElement('span');
+    note.className = 'scope-missing';
+    note.textContent = ` ولم يُفهرس من مواطن الشعر: ${missing.slice(0, 5).map((c) => c.name).join(' · ')}`
+      + (missing.length > 5 ? ` وغيرها (${ar(String(missing.length - 5))})` : '') + '.';
+    el.append(note);
+  }
 }
 
 /**
@@ -387,6 +401,11 @@ async function emptyExplanation() {
 
   if (!meta) reasons.push('ولا فهرسَ منشورٌ في هذا الموقع بعد.');
   else {
+    const missing = missingCategories(meta.categories ?? []);
+    if (missing.length) {
+      reasons.push(`★ ولم يُفهرس من مواطن الشعر: ${missing.map((c) => c.name).join(' · ')} — `
+        + 'وقد يكون فيها ما تطلب.');
+    }
     reasons.push(`والفهرس فيه ${countLabel(meta.verses ?? 0, VERSE)}`
       + (meta.books ? ` ${countLabel(meta.books, BOOK_IN)}` : '') + ' — وما ليس فيه لا يُوجد به.');
     if (!meta.semantic) {
