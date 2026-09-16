@@ -17,6 +17,8 @@ import { splitVerses, looksArabic } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
 import { searchStatic, semanticMatches, indexMeta } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
+import { researchHtml, csv, bibtexAll, byOldest } from '../../core/export.js';
+import { similarity } from '../../core/dedupe.js';
 
 // حالةُ زرّ الشكل تُقرأ من اختيار القارئ السابق
 queueMicrotask(() => { const t = document.getElementById('tashkeel'); if (t) t.checked = showTashkeel; });
@@ -182,7 +184,7 @@ function card(v, rank = 0) {
 
   // ★★ «لماذا ظهر هذا البيت؟» — وهي أنفع سطرٍ في البطاقة للباحث. ★★
   //   بغيرها لا يفرّق بين موافقةٍ في المعنى ومصادفةِ لفظٍ مشترك.
-  const why = matchReason(v, askedVerse);
+  const why = v.why ?? matchReason(v, askedVerse);
   const whyHtml = `<p class="why why-${why.kind}">${ar(esc(why.label))}</p>`;
 
   el.innerHTML = `
@@ -228,6 +230,7 @@ function card(v, rank = 0) {
     e.target.textContent = now ? '★ محفوظ' : '☆ احفظ';
     e.target.classList.toggle('on', now);
     refreshSavedBar();
+    if (!$('notebook')?.hidden) renderNotebook();
   });
   el.querySelector('[data-act="fix"]').addEventListener('click', () => {
     const current = fix?.poet ?? v.poet ?? '';
@@ -312,8 +315,12 @@ async function emptyExplanation() {
   return reasons;
 }
 
+// ★ ما لم يشترك إلا في لفظٍ شائعٍ يُؤخَّر مهما كانت درجتُه ★ — فالباحث
+//   يقرأ الأوّل ويثق، ولا ينبغي أن يكون الأوّلُ مصادفةَ لفظ.
+const WEAK_LAST = (a, b) => (a.why?.kind === 'weak' ? 1 : 0) - (b.why?.kind === 'weak' ? 1 : 0);
+
 const SORTS = {
-  score: (a, b) => (b.score ?? 0) - (a.score ?? 0),
+  score: (a, b) => WEAK_LAST(a, b) || (b.score ?? 0) - (a.score ?? 0),
   oldest: (a, b) => (a.deathYear ?? Infinity) - (b.deathYear ?? Infinity),
   newest: (a, b) => (b.deathYear ?? -Infinity) - (a.deathYear ?? -Infinity),
   poet: (a, b) => String(a.poet ?? 'ي').localeCompare(String(b.poet ?? 'ي'), 'ar'),
@@ -323,15 +330,22 @@ function renderVerses(tail) {
   if (tail !== undefined) statusTail = tail;
   const allowed = allowedTrusts();
   const sort = SORTS[$('sort')?.value] ?? SORTS.score;
+  // سببُ ظهور كل بيت يُحسب مرّةً هنا: تُرتَّب به البطاقات وتُرشَّح، ويُعرض فيها
+  for (const v of lastVerses) v.why = matchReason(v, askedVerse);
+  const hideWeak = $('hide-weak')?.checked;
   const shown = lastVerses
     .filter((v) => allowed.has(v.source?.trust ?? 'circulated'))
+    .filter((v) => !hideWeak || v.why?.kind !== 'weak')
     .sort(sort);
   results.replaceChildren();
   shown.forEach((v, i) => results.append(card(v, i + 1)));
 
   const hidden = lastVerses.length - shown.length;
   $('filters').hidden = !lastVerses.length;
-  $('filter-note').textContent = hidden ? `أُخفي ${countLabel(hidden, HIDDEN)} بسبب درجة التوثيق.` : '';
+  const weakHidden = hideWeak ? lastVerses.filter((v) => v.why?.kind === 'weak').length : 0;
+  $('filter-note').textContent = hidden
+    ? `أُخفي ${countLabel(hidden, HIDDEN)}${weakHidden ? ' — منها ما لم يشترك إلا في لفظٍ شائع' : ' بسبب درجة التوثيق'}.`
+    : '';
 
   // ★ أساسُ الترتيب يُقال، وضعفُه لا يُكتم ★
   const note = $('ranking-note');
@@ -358,6 +372,90 @@ function refreshSavedBar() {
   $('saved-bar').hidden = !n;
   $('saved-count').textContent = countLabel(n, HIDDEN);
   $('group-list').innerHTML = saved.groups().map((g) => `<option value="${esc(g)}">`).join('');
+}
+
+/**
+ * ★ الدفتر — مكانُ عمل الباحث. ★
+ *
+ * كان المحفوظ قائمةً صمّاء: لا تعليق، ولا وسم، ولا ترتيب، ولا يُعرف أوّلُ من
+ * قال المعنى. فكان الباحث ينقل ما جمعه إلى ورقةٍ خارج الموقع ليعمل فيه —
+ * وذاك موضعُ ضياع النصف من عمله.
+ */
+function renderNotebook() {
+  const box = $('nb-list');
+  if (!box) return;
+  const group = $('group-name')?.value.trim() || null;
+  const items = saved.all(group);
+  const ordered = byOldest(items);
+
+  $('nb-summary').textContent = items.length
+    ? `${countLabel(items.length, VERSE)}${group ? ` في «${group}»` : ''}`
+      + ` · أقدمُهم ${ordered[0]?.poet ?? 'غير معروف'}`
+      + (ordered[0]?.deathYear ? ` (ت ${ar(String(ordered[0].deathYear))}هـ)` : '')
+      + ' — والتصدير يرتّبها بالأقدم، فذاك ترتيبُ الموافقات في النقد.'
+    : 'دفترك فارغ. احفظ بيتًا من النتائج ليظهر هنا.';
+
+  box.replaceChildren();
+  items.forEach((v, i) => {
+    const el = document.createElement('article');
+    el.className = 'nb-item';
+
+    // ★ الروايتان بيتٌ واحد ★ — والباحث يجمعهما وهو يحسبهما بيتين
+    const twin = items.find((o, k) => k !== i && similarity(o.text, v.text) >= 0.82);
+    const dup = twin ? `<p class="caveat">روايةٌ أخرى لبيتٍ في دفترك: «${esc(twin.text.slice(0, 40))}…»</p>` : '';
+
+    el.innerHTML = `
+      <div class="nb-move">
+        <button type="button" data-move="-1" title="إلى الأعلى" aria-label="إلى الأعلى">▲</button>
+        <button type="button" data-move="1" title="إلى الأسفل" aria-label="إلى الأسفل">▼</button>
+      </div>
+      <p class="verse"><span class="hemistich">${esc(shaped(v.sadr ?? v.text))}</span>
+        ${v.ajz ? `<span class="sep" aria-hidden="true">۞</span><span class="hemistich">${esc(shaped(v.ajz))}</span>` : ''}</p>
+      <p class="src">${esc(v.poet ?? 'قائله غير معروف')}${v.deathYear ? ` — ت ${ar(String(v.deathYear))}هـ` : ''}
+        · ${esc(v.source?.bookName ?? '')}</p>
+      ${dup}
+      <label class="nb-note">ملاحظتك:
+        <textarea rows="2" data-note placeholder="يصلح شاهدًا لـ… · يشبه بيت…">${esc(v.note ?? '')}</textarea>
+      </label>
+      <label class="nb-tags">وسومك:
+        <input data-tags value="${esc((v.tags ?? []).join('، '))}" placeholder="الفخر، صورة الدهر">
+      </label>
+      <div class="nb-actions">
+        <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
+        <button type="button" data-act="drop" class="quiet">احذف من الدفتر</button>
+      </div>`;
+
+    el.querySelector('[data-note]').addEventListener('change', (e) => {
+      saved.annotate(v.text, { note: e.target.value.trim() });
+    });
+    el.querySelector('[data-tags]').addEventListener('change', (e) => {
+      const tags = e.target.value.split(/[،,]/).map((t) => t.trim()).filter(Boolean);
+      saved.annotate(v.text, { tags });
+    });
+    for (const btn of el.querySelectorAll('[data-move]')) {
+      btn.addEventListener('click', () => {
+        saved.move(v.text, Number(btn.dataset.move));
+        renderNotebook();
+      });
+    }
+    el.querySelector('[data-act="cite"]').addEventListener('click', async (e) => {
+      try {
+        await navigator.clipboard.writeText(citationOf(v, { verse: shaped(v.text) }));
+        e.target.textContent = '✓ نُسخت';
+        setTimeout(() => { e.target.textContent = 'انسخ الإحالة'; }, 1600);
+      } catch { e.target.textContent = 'تعذّر النسخ'; }
+    });
+    el.querySelector('[data-act="drop"]').addEventListener('click', () => {
+      saved.remove(v.text);
+      renderNotebook(); refreshSavedBar(); renderVerses();
+    });
+    box.append(el);
+  });
+}
+
+function notebookItems() {
+  const group = $('group-name')?.value.trim() || null;
+  return saved.all(group);
 }
 
 /** ما بحثتَ عنه قريبًا — يُستعاد بنقرة. */
@@ -571,6 +669,7 @@ for (const t of tabs) {
 btn.addEventListener('click', search);
 q.addEventListener('input', refreshSearchButton);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) search(); });
+$('hide-weak')?.addEventListener('change', () => renderVerses());
 $('tashkeel')?.addEventListener('change', (e) => {
   showTashkeel = e.target.checked;
   localStorage.setItem(TASHKEEL_KEY, showTashkeel ? 'on' : 'off');
@@ -588,6 +687,28 @@ installApproval({
 // اسمُ الملف لاتينيٌّ عمدًا: بعض المتصفّحات تُسقط الاسم العربيّ فيصير «download»
 // بلا امتداد، فلا يُفتح بنقرة. والمحتوى عربيٌّ كما هو.
 $('export-saved')?.addEventListener('click', () => downloadText('muwafaqat-saved.txt', exportText()));
+
+// ── الدفتر ─────────────────────────────────────────────────────────────────
+$('open-notebook')?.addEventListener('click', () => {
+  const nb = $('notebook');
+  nb.hidden = !nb.hidden;
+  if (!nb.hidden) { renderNotebook(); nb.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+});
+$('nb-close')?.addEventListener('click', () => { $('notebook').hidden = true; });
+$('group-name')?.addEventListener('change', () => { if (!$('notebook').hidden) renderNotebook(); });
+
+// ★ ملفٌّ يُفتح في Word محافظًا على شكله — لا جدولٌ خامٌ يُعاد تنسيقه ★
+$('nb-word')?.addEventListener('click', () => {
+  const group = $('group-name')?.value.trim() || 'الموافقات';
+  downloadText(`${group}.doc`, researchHtml(notebookItems(), { title: group }), 'application/msword');
+});
+$('nb-csv')?.addEventListener('click', () => {
+  downloadText('muwafaqat.csv', csv(notebookItems()), 'text/csv;charset=utf-8');
+});
+$('nb-bib')?.addEventListener('click', () => {
+  downloadText('muwafaqat.bib', bibtexAll(notebookItems()), 'application/x-bibtex');
+});
+$('nb-print')?.addEventListener('click', () => window.print());
 $('clear-saved')?.addEventListener('click', () => {
   if (confirm('تُحذف المحفوظات كلها. أمتأكّد؟')) { saved.clear(); refreshSavedBar(); renderVerses(); }
 });

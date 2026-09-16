@@ -75,9 +75,27 @@
       <input id="group-name" list="group-list" size="12" placeholder="محفوظاتي">
       <datalist id="group-list"></datalist>
     </label>
+    <button type="button" id="open-notebook" class="linkish">افتح الدفتر</button>
     <button type="button" id="export-saved" class="linkish">صدّرها ملفًّا</button>
     <button type="button" id="clear-saved" class="linkish quiet">امسحها</button>
   </div>
+
+  <!-- ★ الدفتر: مكانُ عمل الباحث لا قائمةَ محفوظات. ★
+       يعلّق على كل بيت، ويسِمه، ويرتّبه بيده، ويُخرجه فصلًا في بحثه. -->
+  <section id="notebook" class="notebook" hidden>
+    <div class="notebook-head">
+      <h2>دفترك</h2>
+      <div class="notebook-tools">
+        <button type="button" id="nb-word" class="linkish">صدّر إلى Word</button>
+        <button type="button" id="nb-csv" class="linkish">جدولًا (CSV)</button>
+        <button type="button" id="nb-bib" class="linkish">BibTeX</button>
+        <button type="button" id="nb-print" class="linkish">اطبع</button>
+        <button type="button" id="nb-close" class="linkish quiet">أغلِق</button>
+      </div>
+    </div>
+    <p id="nb-summary" class="hint"></p>
+    <div id="nb-list"></div>
+  </section>
 
   <section id="council" class="council" hidden>
     <h2>كيف فُهم بيتك، وبمَ بُحث</h2>
@@ -94,6 +112,9 @@
         <option value="newest">بالأحدث</option>
         <option value="poet">باسم الشاعر</option>
       </select>
+    </label>
+    <label class="check" for="hide-weak" title="ما لم يشترك مع بيتك إلا في لفظٍ شائع كـ«الله» و«إلا»">
+      <input type="checkbox" id="hide-weak"><span>أخفِ الضعيف</span>
     </label>
     <label class="check" for="tashkeel" title="الفهرس فيه المشكول وغيره — وحّد العرض كما تشاء">
       <input type="checkbox" id="tashkeel" checked><span>بالشكل</span>

@@ -14,6 +14,7 @@ import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } 
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
 import { matchReason, sharedWords, markShared, isMeaningful } from '../core/why.js';
 import { citationOf } from '../core/citation.js';
+import { researchHtml, csv, bibtexAll, byOldest } from '../core/export.js';
 import { gate } from '../core/verify.js';
 import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
@@ -1048,6 +1049,37 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
      '«لـلبيد» شائنٌ في حاشيةٍ تُنشر');
   ok('والمجهولُ يُقال فيه ذلك', /غير معروف/.test(citationOf({ text: 'x', source: {} }, { verse: 'x' })));
   ok('وBibTeX تخرج صالحة', /@incollection\{/.test(citationOf(v, { style: 'bibtex' })));
+}
+
+// ── ما يخرج به الباحث إلى بحثه ────────────────────────────────────────────
+{
+  const items = [
+    { text: 'بقدر الكد تكتسب المعالي ... ومن طلب العلا سهر الليالي', poet: 'المتنبي',
+      deathYear: 354, era: { name: 'العصر العباسي' }, note: 'يصلح شاهدًا للفصل الثاني',
+      tags: ['السعي'], source: { bookName: 'ديوان المتنبي', bookAuthor: 'المتنبي', printedPage: '12' } },
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل', poet: 'لبيد',
+      deathYear: 41, source: { bookName: 'شرح الفارضي', bookAuthor: 'الفارضي' } },
+  ];
+
+  eq('★ والترتيب بالأقدم، فذاك ترتيبُ الموافقات في النقد', byOldest(items)[0].poet, 'لبيد',
+     '«أوّل من قاله فلان، ثم تبعه فلان» — وهو ما يسأل عنه الباحث في الموافقات أولًا');
+
+  const doc = researchHtml(items, { title: 'الفناء' });
+  ok('الملفّ يُفتح بالعربية من اليمين', /dir="rtl"/.test(doc) && /lang="ar"/.test(doc));
+  ok('★ والبيت فيه شطران لا سطرٌ واحد', /class="sadr"/.test(doc) && /class="ajz"/.test(doc),
+     'الباحث ينقله إلى رسالته كما هو، فلو خرج نثرًا أعاد تنسيقه بيتًا بيتًا');
+  ok('ومعه الإحالة كاملة', /ديوان المتنبي/.test(doc) && /ص ١٢/.test(doc));
+  ok('وملاحظتُه ووسمُه', /يصلح شاهدًا للفصل الثاني/.test(doc) && /\[السعي\]/.test(doc));
+  ok('ولبيدٌ أوّلًا في الملفّ', doc.indexOf('لبيد') < doc.indexOf('المتنبي'));
+  ok('ولا وسمَ HTML يتسرّب من النصّ', !/<script/i.test(researchHtml([{ text: '<script>x</script>' }])));
+
+  const table = csv(items);
+  ok('★ وجدولُ Excel يُفتح بالعربية لا بطلاسم', table.startsWith('\ufeff'),
+     'بغير BOM يقرأ Excel العربية حروفًا مبعثرة، فيظنّ الباحث الملفّ معطوبًا');
+  eq('وفيه صفٌّ لكل بيت', table.trim().split('\n').length, 3);
+  ok('والصدر والعجز منفصلان', /"بقدر الكد تكتسب المعالي"/.test(table));
+
+  ok('وBibTeX لكل بيت', bibtexAll(items).match(/@incollection/g)?.length === 2);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

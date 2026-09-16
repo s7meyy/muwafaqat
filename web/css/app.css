@@ -183,14 +183,14 @@ button{min-height:44px}
 
 /* ── أزرار البطاقة ── */
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
-.actions button{
+.actions button,.nb-actions button{
   background:transparent;color:var(--accent);border:1px solid var(--line);
   border-radius:9px;padding:8px 16px;font-size:.92rem;min-height:44px;
 }
-.actions button:hover{border-color:var(--accent);background:var(--accent-soft)}
+.actions button:hover,.nb-actions button:hover{border-color:var(--accent);background:var(--accent-soft)}
 .actions button.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
-.actions button.quiet{color:var(--muted)}
-.actions button.quiet:hover{color:var(--danger);border-color:var(--danger);background:transparent}
+.actions button.quiet,.nb-actions button.quiet{color:var(--muted)}
+.actions button.quiet:hover,.nb-actions button.quiet:hover{color:var(--danger);border-color:var(--danger);background:transparent}
 
 /* ── شريط المحفوظات ── */
 .saved-bar{
@@ -222,3 +222,32 @@ button{min-height:44px}
 .badge.t-mudawwar{color:var(--muted)}
 button.stopping{background:var(--danger)}
 .hint.warn{color:var(--warn)}
+
+/* ── الدفتر: مكانُ عمل الباحث ───────────────────────────────────────────── */
+.notebook{margin-top:22px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:18px 20px}
+.notebook-head{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:baseline;justify-content:space-between}
+.notebook-head h2{margin:0;font-size:1.1rem}
+.notebook-tools{display:flex;flex-wrap:wrap;gap:12px}
+.nb-item{position:relative;border-top:1px solid var(--line);padding:14px 0 16px;padding-inline-start:44px}
+.nb-item .verse{font-size:1.2rem;margin-bottom:6px}
+.nb-move{position:absolute;inset-inline-start:0;top:18px;display:flex;flex-direction:column;gap:2px}
+.nb-move button{background:none;border:1px solid var(--line);border-radius:6px;
+  color:var(--muted);cursor:pointer;padding:0 6px;font-size:.8rem;line-height:1.6}
+.nb-move button:hover{color:var(--accent);border-color:var(--accent)}
+.nb-note,.nb-tags{display:block;margin:8px 0 0;font-size:.85rem;color:var(--muted)}
+.nb-note textarea,.nb-tags input{display:block;width:100%;margin-top:4px;
+  font:inherit;font-size:.95rem;color:var(--ink);background:var(--bg);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.nb-actions{display:flex;gap:10px;margin-top:10px}
+
+/* ★ الطباعة: ورقةٌ نظيفة — الأبيات وإحالاتها، بلا زرٍّ ولا لون ★ */
+@media print{
+  .top,.tabs,.box,.search-row,.history,.saved-bar,.filters,.council,
+  .actions,.nb-actions,.nb-move,.notebook-tools,.foot,#status,#scope-note,#filter-note{display:none !important}
+  body{background:#fff;color:#000}
+  .card,.nb-item{border:0;border-bottom:1px solid #ccc;break-inside:avoid;padding:8pt 0}
+  .verse{font-size:15pt}
+  a{color:#000;text-decoration:none}
+  a[href]::after{content:" (" attr(href) ")";font-size:8pt;color:#555}
+}

@@ -34,6 +34,38 @@ export const saved = {
     write(KEY, list);
     return i < 0;
   },
+  get: (text) => read(KEY).find((v) => v.text === text) ?? null,
+
+  // ★ تعليقُ الباحث على البيت ★ — وهو أكثرُ ما كان يُخرجه إلى ورقةٍ خارج
+  //   الموقع: «يشبه بيت المتنبي في…»، «يصلح شاهدًا للفصل الثاني».
+  annotate(text, { note, tags, group } = {}) {
+    const list = read(KEY);
+    const v = list.find((x) => x.text === text);
+    if (!v) return false;
+    if (note !== undefined) v.note = note;
+    if (tags !== undefined) v.tags = tags;
+    if (group !== undefined) v.group = group;
+    write(KEY, list);
+    return true;
+  },
+
+  /** نقلُ البيت في ترتيب دفتره — به يبني فصلَ بحثه. */
+  move(text, delta) {
+    const list = read(KEY);
+    const i = list.findIndex((v) => v.text === text);
+    if (i < 0) return false;
+    const group = list[i].group ?? DEFAULT_GROUP;
+    const sameGroup = list.map((v, k) => ({ v, k })).filter((x) => (x.v.group ?? DEFAULT_GROUP) === group);
+    const at = sameGroup.findIndex((x) => x.k === i);
+    const to = at + delta;
+    if (to < 0 || to >= sameGroup.length) return false;
+    const [a, b] = [sameGroup[at].k, sameGroup[to].k];
+    [list[a], list[b]] = [list[b], list[a]];
+    write(KEY, list);
+    return true;
+  },
+
+  remove(text) { write(KEY, read(KEY).filter((v) => v.text !== text)); },
   clear: () => write(KEY, []),
 };
 
@@ -85,6 +117,8 @@ export function verseToText(v) {
     : (s.siteName ?? '');
   if (where) parts.push(where);
   if (s.url) parts.push(s.url);
+  if (v.note) parts.push(`ملاحظتك: ${v.note}`);
+  if (v.tags?.length) parts.push(v.tags.map((t) => `#${t}`).join(' '));
   return parts.join('\n');
 }
 
@@ -106,8 +140,8 @@ export function exportText() {
   return out.join('\n');
 }
 
-export function downloadText(filename, text) {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+export function downloadText(filename, text, type = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
