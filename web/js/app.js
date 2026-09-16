@@ -49,6 +49,9 @@ const HARF = {
 };
 const harfName = (c) => HARF[c] ?? c;
 
+// تطبيعٌ خفيفٌ للترشيح داخل النتائج: بلا شكلٍ ولا فرقٍ بين صور الألف
+const normalizeQuery = (t) => stripDiacritics(String(t ?? '')).replace(/[أإآ]/g, 'ا').trim();
+
 const $ = (id) => document.getElementById(id);
 const q = $('q'), btn = $('search'), statusEl = $('status'), results = $('results'), hint = $('hint');
 
@@ -359,9 +362,12 @@ function renderVerses(tail) {
   // سببُ ظهور كل بيت يُحسب مرّةً هنا: تُرتَّب به البطاقات وتُرشَّح، ويُعرض فيها
   for (const v of lastVerses) v.why = matchReason(v, askedVerse);
   const hideWeak = $('hide-weak')?.checked;
+  // ★ البحث داخل النتائج ★ — من جمع أربعين بيتًا يريد «ما كان للمتنبي منها»
+  const within = normalizeQuery($('within')?.value ?? '');
   const shown = lastVerses
     .filter((v) => allowed.has(v.source?.trust ?? 'circulated'))
     .filter((v) => !hideWeak || v.why?.kind !== 'weak')
+    .filter((v) => !within || normalizeQuery(`${v.text} ${v.poet ?? ''} ${v.source?.bookName ?? ''}`).includes(within))
     .sort(sort);
   results.replaceChildren();
   shown.forEach((v, i) => results.append(card(v, i + 1)));
@@ -695,6 +701,23 @@ for (const t of tabs) {
 btn.addEventListener('click', search);
 q.addEventListener('input', refreshSearchButton);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) search(); });
+// ── الأمثلة · البحث داخل النتائج · الاختصارات · حدود الموقع ───────────────
+for (const b of document.querySelectorAll('.example')) {
+  b.addEventListener('click', () => { q.value = b.textContent.trim(); refreshSearchButton(); search(); });
+}
+$('within')?.addEventListener('input', () => renderVerses());
+$('limits-btn')?.addEventListener('click', () => { const el = $('limits'); el.hidden = !el.hidden; });
+$('keys-btn')?.addEventListener('click', () => { const el = $('keys'); el.hidden = !el.hidden; });
+
+// ★ اختصاراتٌ لمن يعمل ساعاتٍ في الموقع ★ — ولا تُلتقط وهو يكتب في حقل
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName ?? '');
+  if (e.key === '/' && !typing) { e.preventDefault(); q.focus(); return; }
+  if (e.key === '؟' && !typing) { const el = $('keys'); el.hidden = !el.hidden; return; }
+  if (e.key === 'د' && !typing) { $('open-notebook')?.click(); return; }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); search(); }
+});
+
 $('hide-weak')?.addEventListener('change', () => renderVerses());
 $('tashkeel')?.addEventListener('change', (e) => {
   showTashkeel = e.target.checked;

@@ -24,6 +24,12 @@
   <section class="box" id="pane-text" role="tabpanel" aria-labelledby="tab-text">
     <label for="q">البيت</label>
     <textarea id="q" rows="3" placeholder="وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا" spellcheck="false"></textarea>
+    <!-- ★ الزائرُ الأول لا يعرف ما يُدخل: مثالٌ يُضغط يُغني عن شرحٍ طويل ★ -->
+    <p class="examples">جرّب:
+      <button type="button" class="example">وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا</button>
+      <button type="button" class="example">ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل</button>
+      <button type="button" class="example">دع الأيام تفعل ما تشاء ... وطب نفسا إذا حكم القضاء</button>
+    </p>
   </section>
 
   <section class="box" id="pane-image" role="tabpanel" aria-labelledby="tab-image" hidden>
@@ -119,6 +125,9 @@
     <label class="check" for="tashkeel" title="الفهرس فيه المشكول وغيره — وحّد العرض كما تشاء">
       <input type="checkbox" id="tashkeel" checked><span>بالشكل</span>
     </label>
+    <label class="within" for="within">في النتائج:
+      <input id="within" type="search" size="14" placeholder="كلمة أو اسم شاعر">
+    </label>
     <span class="filters-label">اعرض:</span>
     <label class="check"><input type="checkbox" class="trust-filter" value="documented" checked><span>🟢 موثَّق</span></label>
     <label class="check"><input type="checkbox" class="trust-filter" value="published" checked><span>🟡 منشور</span></label>
@@ -134,6 +143,28 @@
 
 <footer class="foot">
   <p>لا يُعرض بيتٌ إلا وُجد نصُّه في مصدرٍ حقيقيّ. وما لم يُوجد — لا يُعرض.</p>
+  <p><button type="button" id="limits-btn" class="linkish">حدودُ هذا الموقع — ما لا يعرفه ولا يدّعيه</button>
+     · <button type="button" id="keys-btn" class="linkish quiet">اختصارات لوحة المفاتيح (؟)</button></p>
+  <div id="limits" class="limits" hidden>
+    <h2>حدودُ هذا الموقع</h2>
+    <ul>
+      <li><strong>لا يعرف إلا ما فُهرس.</strong> والمفهرس كتبٌ من مكتبة صاحب الموقع، لا الشعر العربي كلّه — وعددُها مكتوبٌ تحت النتائج.</li>
+      <li><strong>البحث اللفظيّ لا يجد المعنى.</strong> «وما نيل المطالب بالتمنّي» و«بقدر الكدّ تكتسب المعالي» لا تشترك بينهما كلمة. فإن لم يُبنَ الفهرس بالمعنى لم يجمعهما.</li>
+      <li><strong>البحر لا يُعلَن.</strong> التقطيع الآليّ على نصوصٍ ناقصة الشكل لا يفصل بين البحور، فيُعرض التقطيع والقافية ويُسكت عن البحر.</li>
+      <li><strong>النسبة نقلٌ لا حكم.</strong> يُنقل ما قاله الكتاب، ويُعرض الخلاف إذا اختلفت الكتب، ولا يُرجَّح.</li>
+      <li><strong>الترقيم قد يكون آليًّا.</strong> بعض كتب الشاملة مرقَّمةٌ آليًّا لا بترقيم المطبوع، ويُصرَّح بذلك في الإحالة.</li>
+      <li><strong>ما لم يُثبت لا يُعرض.</strong> ما اقترحته النماذج ولم يوجد نصُّه في كتابٍ يُعدُّ ولا يُعرض.</li>
+    </ul>
+  </div>
+  <div id="keys" class="limits" hidden>
+    <h2>اختصارات لوحة المفاتيح</h2>
+    <ul>
+      <li><kbd>/</kbd> الانتقال إلى حقل البيت</li>
+      <li><kbd>Ctrl</kbd>+<kbd>Enter</kbd> ابحث</li>
+      <li><kbd>د</kbd> فتحُ الدفتر وإغلاقه</li>
+      <li><kbd>؟</kbd> هذه القائمة</li>
+    </ul>
+  </div>
 </footer>
 
 <script type="module" src="js/app.js"></script>
