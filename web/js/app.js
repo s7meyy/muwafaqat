@@ -75,6 +75,10 @@ let askedVerse = '';        // بيتُ السائل — به يُعرف سبب�
 //   كان السببُ يُحسب على مجموع ما لُصق، فيُقال «لم يشترك إلا في: فقد» — و«فقد»
 //   من بيته الأول لا الثاني، فيصير الجوابُ بلا معنًى كلما كثُر السؤال.
 let askedList = [];
+// ★ عشرون نتيجةً وكفى — ولا «مزيد». ★ من بحث في معنًى شائعٍ لا يرى إلا عشرين
+//   ولا يعلم أن وراءها شيئًا، فيبني إحصاءً على العشرين.
+let shownLimit = 20;
+let canFetchMore = false;
 let capabilities = null;   // ما يقدر عليه الجسر: تفريغ · مجلس · شبكة
 let searching = false;
 let imageApproved = false;
@@ -421,6 +425,30 @@ async function emptyExplanation() {
 //   يقرأ الأوّل ويثق، ولا ينبغي أن يكون الأوّلُ مصادفةَ لفظ.
 const WEAK_LAST = (a, b) => (a.why?.kind === 'weak' ? 1 : 0) - (b.why?.kind === 'weak' ? 1 : 0);
 
+/** يملأ مرشِّحاتِ البحر والغرض والعصر ممّا في النتائج نفسها — لا بقائمةٍ ثابتة. */
+function fillFacets() {
+  const of = (get) => [...new Set(lastVerses.map(get).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), 'ar'));
+  const fill = (id, values, label) => {
+    const el = $(id);
+    if (!el) return;
+    const keep = el.value;
+    el.replaceChildren();
+    const all = document.createElement('option');
+    all.value = ''; all.textContent = label;
+    el.append(all);
+    for (const v of values) {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v;
+      el.append(o);
+    }
+    el.value = values.includes(keep) ? keep : '';
+    el.closest('.pick').hidden = values.length < 2;
+  };
+  fill('f-meter', of((v) => v.meter), 'كلُّها');
+  fill('f-purpose', of((v) => v.purpose), 'كلُّها');
+  fill('f-era', of((v) => v.era?.name), 'كلُّها');
+}
+
 const SORTS = {
   score: (a, b) => WEAK_LAST(a, b) || (b.score ?? 0) - (a.score ?? 0),
   oldest: (a, b) => (a.deathYear ?? Infinity) - (b.deathYear ?? Infinity),
@@ -437,15 +465,25 @@ function renderVerses(tail) {
   const hideWeak = $('hide-weak')?.checked;
   // ★ البحث داخل النتائج ★ — من جمع أربعين بيتًا يريد «ما كان للمتنبي منها»
   const within = normalizeQuery($('within')?.value ?? '');
+  const fMeter = $('f-meter')?.value ?? '';
+  const fPurpose = $('f-purpose')?.value ?? '';
+  const fEra = $('f-era')?.value ?? '';
   const shown = lastVerses
     .filter((v) => allowed.has(v.source?.trust ?? 'circulated'))
     .filter((v) => !hideWeak || v.why?.kind !== 'weak')
     .filter((v) => !within || normalizeQuery(`${v.text} ${v.poet ?? ''} ${v.source?.bookName ?? ''}`).includes(within))
+    // ★ مرشِّحاتٌ على ما قاله الكتابُ نفسه — وهي صيغةُ سؤال الباحث في المعارضات ★
+    .filter((v) => !fMeter || v.meter === fMeter)
+    .filter((v) => !fPurpose || v.purpose === fPurpose)
+    .filter((v) => !fEra || v.era?.name === fEra)
     .sort(sort);
   results.replaceChildren();
   shown.forEach((v, i) => results.append(card(v, i + 1)));
   const head = $('results-head');
   if (head) head.hidden = !shown.length;
+  fillFacets();
+  const moreBtn = $('more');
+  if (moreBtn) moreBtn.hidden = !canFetchMore || searching;
 
   const hidden = lastVerses.length - shown.length;
   $('filters').hidden = !lastVerses.length;
@@ -673,7 +711,7 @@ async function fetchFor(verse, useCouncil) {
 
 const DOUBLE_CLICK_GRACE = 500;
 
-async function search() {
+async function search({ more = false } = {}) {
   // ★ بحثُ المجلس قد يطول دقيقة — فزرُّ البحث يصير زرَّ إيقاف ★
   //   لكنّ من يضغط مرّتين سريعًا يظنّ أن الأولى لم تُسجَّل، لا يريد الإيقاف.
   //   فالضغطة التي تلي البدء بأقلّ من نصف ثانيةٍ تُهمَل ولا تُوقف شيئًا.
@@ -711,6 +749,7 @@ async function search() {
   const verses = splitVerses(raw);
   askedVerse = raw;
   askedList = verses;
+  if (!more) { shownLimit = 20; canFetchMore = false; }
   const useCouncil = $('use-council')?.checked && Boolean(capabilities?.council);
   history.add(raw);
   renderHistory();
@@ -749,7 +788,7 @@ async function search() {
         if (!data) bridgeFailed = true;
       }
     }
-    if (!data) { try { data = await searchStatic(verse, { excludeVerse: verse }); } catch { data = null; } }
+    if (!data) { try { data = await searchStatic(verse, { excludeVerse: verse, limit: shownLimit }); } catch { data = null; } }
     if (!data) continue;
 
     for (const v of data.itself ?? []) {
@@ -816,6 +855,8 @@ async function search() {
   if (kindNote) bits.push(kindNote);
   if (bridgeFailed || !capabilities) bits.push(' · من الفهرس المنشور وحده');
   if (stopped) bits.push(' · أُوقف البحث قبل تمامه');
+  // بلغَ ما جاء الحدَّ؟ فلعلّ وراءه مزيدًا
+  canFetchMore = lastVerses.length >= shownLimit;
   renderVerses(bits.join(''));
   if (authFailed) warnAuth();
 }
@@ -863,6 +904,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); search(); }
 });
 
+$('more')?.addEventListener('click', () => {
+  shownLimit += 20;
+  search({ more: true });
+});
+for (const id of ['f-meter', 'f-purpose', 'f-era']) $(id)?.addEventListener('change', () => renderVerses());
 $('hide-weak')?.addEventListener('change', () => renderVerses());
 $('tashkeel')?.addEventListener('change', (e) => {
   showTashkeel = e.target.checked;

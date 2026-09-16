@@ -11,7 +11,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { buildIndex, shardName } from '../core/verse-index.js';
 import { detectRegister } from '../core/register.js';
-import { toArabicDigits } from '../core/normalize.js';
+import { toArabicDigits, poetKey } from '../core/normalize.js';
 import { countLabel, SHARD, VERSE } from '../core/plural.js';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) => {
@@ -76,7 +76,8 @@ const built = buildIndex(verses, { neighbors });
 // ★ نطاقُ البحث يجب أن يكون معلومًا للباحث ★ — فلا يقول «ليس في الشعر العربي»
 //   وإنما «ليس فيما فُهرس». (كم كتابًا؟ وكم شاعرًا؟)
 built.meta.books = new Set(verses.map((v) => v.source?.bookName).filter(Boolean)).size;
-built.meta.poets = new Set(verses.map((v) => v.poet).filter(Boolean)).size;
+// ★ ويُعدّ الشاعرُ مرّةً وإن تعدّدت صورُ اسمه ★
+built.meta.poets = new Set(verses.map((v) => v.poet).filter(Boolean).map(poetKey)).size;
 // ★ وما لم يُفهرس يُقال كذلك ★ — فلا يحسب الباحث سكوتَ الفهرس سكوتَ الشعر
 built.meta.categories = [...new Set(verses.map((v) => v.source?.category).filter(Boolean))];
 

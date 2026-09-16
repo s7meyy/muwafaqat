@@ -69,3 +69,30 @@ export function isMostlyArabic(text, threshold = 0.6) {
   const arabic = (chars.match(/[ء-ي]/g) || []).length;
   return arabic / chars.length >= threshold;
 }
+
+/**
+ * ★ مفتاحُ اسم الشاعر — لتوحيد صوره. ★
+ * ظهر في فهرس التجربة: «لبيد بن ربيعة العامري» و«لبيد» و«لبيد ابن ربيعة
+ * العامري» — ثلاثةُ شعراءَ في عدّاد الموقع، وثلاثةُ مداخلَ في أيّ ترشيحٍ
+ * بالشاعر، وثلاثُ ترجماتٍ تُطلب من «الأعلام». وهو رجلٌ واحد.
+ * فيُوحَّد: «ابن» و«بن» سواء، والألقابُ الزائدة تُسقط عند المقارنة.
+ */
+export function poetKey(name) {
+  // ★ و«\b» لا تعمل مع العربية في JS ★ — حدودُ الكلمة فيها للاتينية وحدها
+  const t = normalize(name)
+    .replace(/(^|\s)ابن(?=\s)/g, '$1بن')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t;
+}
+
+/** أهما اسمٌ واحدٌ في صورتين؟ (أحدهما أطولُ نسبًا من الآخر) */
+export function sameName(a, b) {
+  const x = poetKey(a);
+  const y = poetKey(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  const [long, short] = x.length >= y.length ? [x, y] : [y, x];
+  // «لبيد» و«لبيد بن ربيعة العامري»: يُعدّان واحدًا إن كان القصير أوّلَ الطويل
+  return short.length >= 3 && (long === short || long.startsWith(short + ' '));
+}

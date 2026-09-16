@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalize, fingerprint, toArabicDigits, isMostlyArabic } from '../core/normalize.js';
+import { normalize, fingerprint, toArabicDigits, isMostlyArabic, sameName, poetKey } from '../core/normalize.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } from '../core/attribution.js';
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
@@ -26,6 +26,7 @@ import { diffTranscripts, disagreementCount, agreementRatio, proposedText } from
 import { countLabel, VERSE, PAGE, MATCHED_VERSE } from '../core/plural.js';
 import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
+import { missingCategories, categoryName } from '../core/categories.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1295,6 +1296,27 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
      extractVerses('وفيه: فساد قول من قال: أن للمرأة البالغة المالكة أمرها تزويج نفسها وعقد النكاح').length, 0);
   eq('★ و«قول الشاعر:» يُقبل', extractVerses(
     'ومما يدل على أن الغراب يقذر لحمه قول الشاعر: فما لحم الغراب لنا بزاد ولا سرطان أنهار البريص').length, 1);
+}
+
+// ── توحيدُ صور اسم الشاعر ─────────────────────────────────────────────────
+{
+  ok('★ «لبيد» و«لبيد بن ربيعة العامري» رجلٌ واحد', sameName('لبيد', 'لبيد بن ربيعة العامري'),
+     'خرج في فهرس التجربة ثلاثةُ «شعراء» لرجلٍ واحد، فانقسم عليهم شعرُه وعدُّه وترجمتُه');
+  ok('و«ابن» و«بن» سواء', sameName('لبيد ابن ربيعة العامري', 'لبيد بن ربيعة العامري'));
+  ok('★ و«\\b» لا تعمل مع العربية', poetKey('لبيد ابن ربيعة') === poetKey('لبيد بن ربيعة'),
+     'حدودُ الكلمة في JavaScript للاتينية وحدها، فكان الاستبدالُ لا يقع');
+  ok('ولا يُخلط شاعرٌ بآخر', !sameName('المتنبي', 'أبو تمام'));
+  ok('ولا «ابن الرومي» بـ«الرومي»', !sameName('ابن الرومي', 'الرومي'));
+}
+
+// ── ما لم يُبحث فيه ───────────────────────────────────────────────────────
+{
+  eq('اسمُ التصنيف يُعرف برقمه', categoryName(7), 'شروح الحديث');
+  const missing = missingCategories([34, 31, 26]);
+  ok('★ وما لم يدخل الفهرس يُسمّى', missing.some((c) => c.name === 'شروح الحديث'),
+     'فلا يحسب الباحث سكوتَ الفهرس سكوتَ الشعر');
+  ok('والمفهرَسُ لا يُذكر فيها', !missing.some((c) => c.id === 34));
+  ok('والتراجمُ صارت مفهرَسةً افتراضًا', !missingCategories([26]).some((c) => c.id === 26));
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

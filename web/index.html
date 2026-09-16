@@ -127,6 +127,16 @@
     <label class="check" for="tashkeel" title="الفهرس فيه المشكول وغيره — وحّد العرض كما تشاء">
       <input type="checkbox" id="tashkeel" checked><span>بالشكل</span>
     </label>
+    <!-- ★ مرشِّحاتٌ على ما صار مخزونًا في الفهرس: البحر والغرض والعصر ★ -->
+    <label class="pick" for="f-meter">البحر:
+      <select id="f-meter"><option value="">كلُّها</option></select>
+    </label>
+    <label class="pick" for="f-purpose">الغرض:
+      <select id="f-purpose"><option value="">كلُّها</option></select>
+    </label>
+    <label class="pick" for="f-era">العصر:
+      <select id="f-era"><option value="">كلُّها</option></select>
+    </label>
     <label class="within" for="within">في النتائج:
       <input id="within" type="search" size="14" placeholder="كلمة أو اسم شاعر">
     </label>
@@ -148,6 +158,7 @@
   <p id="ranking-note" class="ranking-note" aria-live="polite"></p>
   <h2 id="results-head" class="results-head" hidden>الأبياتُ الموافقة</h2>
   <section id="results" class="results" aria-labelledby="results-head" tabindex="-1"></section>
+  <p class="more-row"><button type="button" id="more" hidden>اعرض المزيد</button></p>
 </main>
 
 <footer class="foot">

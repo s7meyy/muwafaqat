@@ -325,3 +325,10 @@ button.stopping{background:var(--danger)}
 .more-poets{display:inline}
 .more-poets summary{display:inline;cursor:pointer;color:var(--accent)}
 .scope-missing{color:var(--warn);opacity:.9}
+.pick{color:var(--muted);font-size:.9rem}
+.pick select{font:inherit;font-size:.9rem;margin-inline-start:4px;background:var(--bg);
+  color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:3px 6px}
+.more-row{text-align:center;margin:16px 0}
+#more{font:inherit;background:var(--card);color:var(--accent);border:1px solid var(--accent);
+  border-radius:999px;padding:8px 22px;cursor:pointer}
+#more:hover{background:var(--accent-soft)}
