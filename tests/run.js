@@ -12,6 +12,8 @@ import { normalize, fingerprint, toArabicDigits, isMostlyArabic } from '../core/
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } from '../core/attribution.js';
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
+import { matchReason, sharedWords, markShared, isMeaningful } from '../core/why.js';
+import { citationOf } from '../core/citation.js';
 import { gate } from '../core/verify.js';
 import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
@@ -993,6 +995,59 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
 
   const none = await neighborsOf('بيتٌ ليس في الفهرس أصلًا وليس فيه شيء', load, opts);
   eq('★ وما ليس في الفهرس لا جيرةَ له، ولا تُختلق له', none.verses.length, 0);
+}
+
+// ── «لماذا ظهر هذا البيت؟» ────────────────────────────────────────────────
+// ★ ما كشفته جولةُ باحثٍ في الأدب: بطاقةٌ لا تقول سببَ ظهورها تُضلّل. ★
+{
+  const q = 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل';
+
+  const weak = matchReason({ text: 'والله يقضي بهبات وافره ... لي وله في درجات الآخره' }, q);
+  eq('★ الاشتراكُ في لفظٍ شائعٍ ليس موافقة', weak.kind, 'weak',
+     'سُئل الموقع ببيتٍ في فناء الدنيا فجاءه بيتُ دعاءٍ لاشتراكهما في «الله» — وسكت');
+  ok('ويُقال ذلك صراحة', /لا يدلّ على موافقةٍ في المعنى/.test(weak.label));
+
+  ok('و«الله» و«إلا» لفظان شائعان', !isMeaningful('الله') && !isMeaningful('إلا'));
+  ok('و«المطالب» و«المعالي» يُعتدّ بهما', isMeaningful('المطالب') && isMeaningful('المعالي'));
+
+  const sense = matchReason({ text: 'بقدر الكد تكتسب المعالي', semantic: true, similarity: 0.88 }, q);
+  eq('وموافقةُ المعنى تُقال بدرجتها', sense.kind, 'sense');
+  ok('بنسبتها', /88/.test(sense.label));
+
+  const council = matchReason({ text: 'وما نيل المطالب بالتمني', matchedQueries: ['طلب العلا'] }, q);
+  eq('ومدخلُ المجلس يُنسب إليه', council.kind, 'council');
+
+  const lex = matchReason({ text: 'وكل نعيم لا محالة زائل ... فانظر لنفسك' },
+    'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل');
+  eq('والاشتراكُ في كلمٍ دالٍّ موافقةٌ لفظية', lex.kind, 'lexical');
+  ok('وتُسمّى كلماتُه', lex.words.some((w) => /نعيم|محالة|زائل/.test(w)));
+
+  eq('★ ولا يُختلق سبب', matchReason({ text: 'لا شيء مشترك هنا البتة' }, 'كلام آخر مختلف تماما').kind, 'none');
+
+  const marked = markShared('وكل نعيم لا محالة زائل', q);
+  ok('★ والمشترك يُظلَّل في البيت نفسه', marked.filter((w) => w.shared).length >= 2,
+     'فيرى الباحث بعينه سببَ الجمع، لا يقرأ عنه');
+  ok('وغيرُ المشترك لا يُظلَّل', marked.some((w) => !w.shared));
+
+  ok('والسوابق لا تمنع المطابقة', sharedWords('المطالب', 'بالمطالب العلا').length === 1);
+}
+
+// ── الإحالة الجاهزة ───────────────────────────────────────────────────────
+{
+  const v = {
+    text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل',
+    poet: 'لبيد بن ربيعة', deathYear: 41,
+    source: { bookName: 'شرح الفارضي', bookAuthor: 'الفارضي', printedPage: '1/ 37', autoNumbered: true },
+  };
+  const c = citationOf(v, { verse: v.text });
+  ok('الإحالة فيها الكتاب ومؤلّفه والصفحة', /الفارضي/.test(c) && /شرح الفارضي/.test(c) && /١\/ ٣٧/.test(c));
+  ok('وسنةُ الوفاة بالأرقام العربية', /ت ٤١هـ/.test(c));
+  ok('★ ويُصرَّح بأن الترقيم آليّ', /بترقيم الشاملة آليًّا/.test(c),
+     'من أحال بترقيمٍ آليٍّ إلى صفحةٍ في مطبوعٍ أخطأ، والباحث لا يعرف ذلك من تلقائه');
+  ok('★ ولا تُلصق لامُ الجرّ بالاسم', !/لـلبيد/.test(c),
+     '«لـلبيد» شائنٌ في حاشيةٍ تُنشر');
+  ok('والمجهولُ يُقال فيه ذلك', /غير معروف/.test(citationOf({ text: 'x', source: {} }, { verse: 'x' })));
+  ok('وBibTeX تخرج صالحة', /@incollection\{/.test(citationOf(v, { style: 'bibtex' })));
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

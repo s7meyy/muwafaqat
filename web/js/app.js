@@ -8,13 +8,18 @@
 //  ٣) البيت الذي يجده المستخدم نافعًا يجب أن يستطيع أخذه معه — نسخًا أو حفظًا
 //     أو تصديرًا. وإلّا فعملُه محبوسٌ في متصفّح.
 
-import { toArabicDigits as ar, fingerprint } from '../../core/normalize.js';
+import { toArabicDigits as ar, fingerprint, stripDiacritics } from '../../core/normalize.js';
+import { matchReason, markShared } from '../../core/why.js';
+import { citationOf } from '../../core/citation.js';
 import { rankingNote } from '../../core/semantic.js';
-import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ } from '../../core/plural.js';
+import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
-import { searchStatic, semanticMatches } from './static-index.js';
+import { searchStatic, semanticMatches, indexMeta } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
+
+// حالةُ زرّ الشكل تُقرأ من اختيار القارئ السابق
+queueMicrotask(() => { const t = document.getElementById('tashkeel'); if (t) t.checked = showTashkeel; });
 
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
 const TOKEN = localStorage.getItem('muwafaqat.token') || '';
@@ -24,6 +29,12 @@ const TOKEN = localStorage.getItem('muwafaqat.token') || '';
 // كل شيءٍ يعمل وهو محرومٌ من المجلس والشبكة والمكتبة الحيّة.
 const TOKEN_MALFORMED = TOKEN !== '' && /[^\x20-\x7E]/.test(TOKEN);
 const SAFE_TOKEN = TOKEN_MALFORMED ? '' : TOKEN;
+
+// ★ الشكل خيارُ القارئ لا خيارُ الطبعة. ★ الفهرس فيه المشكول وغيره، فالصفحة
+// تخرج مختلطة: بيتٌ بالشكل وبيتٌ بغيره. والباحث ينسخ ما يختار لا ما وقع.
+const TASHKEEL_KEY = 'muwafaqat.tashkeel';
+let showTashkeel = localStorage.getItem(TASHKEEL_KEY) !== 'off';
+export const shaped = (t) => (showTashkeel ? String(t ?? '') : stripDiacritics(String(t ?? '')));
 
 const $ = (id) => document.getElementById(id);
 const q = $('q'), btn = $('search'), statusEl = $('status'), results = $('results'), hint = $('hint');
@@ -42,6 +53,7 @@ const HIDDEN = { zero: 'لا شيء', one: 'بيتٌ واحد', two: 'بيتان
   few: '# أبيات', many: '# بيتًا', other: '# بيت' };
 
 let lastVerses = [];
+let askedVerse = '';        // بيتُ السائل — به يُعرف سببُ ظهور كلّ نتيجة
 let capabilities = null;   // ما يقدر عليه الجسر: تفريغ · مجلس · شبكة
 let searching = false;
 let imageApproved = false;
@@ -93,7 +105,7 @@ function reflectCapabilities() {
 }
 
 // ── البطاقة ────────────────────────────────────────────────────────────────
-function card(v) {
+function card(v, rank = 0) {
   const el = document.createElement('article');
   el.className = 'card';
   const trust = TRUST[v.source?.trust] ?? TRUST.circulated;
@@ -156,8 +168,27 @@ function card(v) {
     ? '<span class="badge t-agreed" title="ورد في أكثر من كتابٍ بالنسبة نفسها">تعاضدت عليه الكتب</span>' : '';
 
   const isSaved = saved.has(v.text);
+
+  // ★ البيت يُعرض شِعرًا لا نثرًا: ★ شطران متقابلان، لا سطرٌ يلتفّ حيث انتهت
+  //   الشاشة فيقطع الصدرَ في موضعٍ لا معنى له.
+  const hemistich = (t) => markShared(shaped(t), askedVerse)
+    .map((w) => (w.shared ? `<mark>${esc(w.word)}</mark>` : esc(w.word)))
+    .join(' ');
+  const verseHtml = v.ajz
+    ? `<span class="hemistich">${hemistich(v.sadr)}</span>`
+      + '<span class="sep" aria-hidden="true">۞</span>'
+      + `<span class="hemistich">${hemistich(v.ajz)}</span>`
+    : `<span class="hemistich whole">${hemistich(v.text)}</span>`;
+
+  // ★★ «لماذا ظهر هذا البيت؟» — وهي أنفع سطرٍ في البطاقة للباحث. ★★
+  //   بغيرها لا يفرّق بين موافقةٍ في المعنى ومصادفةِ لفظٍ مشترك.
+  const why = matchReason(v, askedVerse);
+  const whyHtml = `<p class="why why-${why.kind}">${ar(esc(why.label))}</p>`;
+
   el.innerHTML = `
-    <p class="verse">${esc(v.sadr ?? v.text)}${v.ajz ? `<span class="sep">...</span>${esc(v.ajz)}` : ''}</p>
+    ${rank ? `<span class="rank" aria-hidden="true">${ar(String(rank))}</span>` : ''}
+    <p class="verse">${verseHtml}</p>
+    ${whyHtml}
     <div class="meta">
       <span class="poet">${poet}</span>
       ${life ? `<span>${life}</span>` : ''}
@@ -171,6 +202,7 @@ function card(v) {
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>
       ${s.bookId && capabilities ? '<button type="button" data-act="ctx" class="quiet">أرِني الصفحة</button>' : ''}
+      <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
       <button type="button" data-act="fix" class="quiet">صحّح النسبة</button>
       <button type="button" data-act="no" class="quiet">ليس موافقًا</button>
     </div>
@@ -178,9 +210,17 @@ function card(v) {
 
   el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
     try {
-      await navigator.clipboard.writeText(verseToText(v));
+      await navigator.clipboard.writeText(verseToText({ ...v, text: shaped(v.text), sadr: shaped(v.sadr), ajz: shaped(v.ajz) }));
       e.target.textContent = '✓ نُسخ';
       setTimeout(() => { e.target.textContent = 'انسخ'; }, 1600);
+    } catch { e.target.textContent = 'تعذّر النسخ'; }
+  });
+  // ★ الإحالة جاهزةٌ للحاشية ★ — والباحث كان ينسخها بيده من ثلاثة مواضع
+  el.querySelector('[data-act="cite"]').addEventListener('click', async (e) => {
+    try {
+      await navigator.clipboard.writeText(citationOf(v, { verse: shaped(v.text) }));
+      e.target.textContent = '✓ نُسخت';
+      setTimeout(() => { e.target.textContent = 'انسخ الإحالة'; }, 1600);
     } catch { e.target.textContent = 'تعذّر النسخ'; }
   });
   el.querySelector('[data-act="save"]').addEventListener('click', (e) => {
@@ -228,6 +268,50 @@ function allowedTrusts() {
 let statusTail = '';
 let lastRanking = null;
 
+/** سطرُ النطاق: ماذا فُهرس، وكم، ومتى — تحت النتائج لا فوقها. */
+async function renderScope() {
+  const el = $('scope-note');
+  if (!el) return;
+  let meta = null;
+  try { meta = await indexMeta(); } catch { /* لا فهرس منشور */ }
+  if (!meta) { el.textContent = ''; return; }
+  const bits = [`بُحث في ${countLabel(meta.verses ?? 0, VERSE)}`];
+  if (meta.books) bits.push(countLabel(meta.books, BOOK_IN));
+  if (meta.poets) bits.push(countLabel(meta.poets, POET));
+  bits.push(meta.semantic ? '— باللفظ وبالمعنى' : '— باللفظ وحده');
+  if (meta.builtAt) {
+    const d = new Date(meta.builtAt);
+    if (!Number.isNaN(d.getTime())) bits.push(`· فُهرس في ${ar(d.toLocaleDateString('ar-EG'))}`);
+  }
+  el.textContent = bits.join(' ') + '.';
+}
+
+/**
+ * ★ لماذا لم أجد شيئًا؟ ★
+ * الصفرُ جوابٌ صادق، لكنّه بلا تفسيرٍ يوقع الباحث في ظنٍّ خاطئ: أن المعنى لم
+ * يقله أحد. والعلّة في الغالب في نطاق البحث لا في الشعر.
+ */
+async function emptyExplanation() {
+  const reasons = [];
+  let meta = null;
+  try { meta = await indexMeta(); } catch { /* لا فهرس */ }
+
+  if (!capabilities) reasons.push('المكتبة الحيّة مغلقة، فلم يُبحث إلا في الفهرس المنشور.');
+  else if (!$('use-council')?.checked) reasons.push('مجلس النماذج مُطفأ، فلم يُوسَّع معنى بيتك بمداخلَ أخرى.');
+
+  if (!meta) reasons.push('ولا فهرسَ منشورٌ في هذا الموقع بعد.');
+  else {
+    reasons.push(`والفهرس فيه ${countLabel(meta.verses ?? 0, VERSE)}`
+      + (meta.books ? ` ${countLabel(meta.books, BOOK_IN)}` : '') + ' — وما ليس فيه لا يُوجد به.');
+    if (!meta.semantic) {
+      reasons.push('★ وهو مبنيٌّ باللفظ وحده: فلا يجد بيتًا يوافق معناك بغير كلماتك '
+        + '(«وما نيل المطالب بالتمنّي» لا تجد «بقدر الكدّ تكتسب المعالي»).');
+    }
+  }
+  reasons.push('جرّب: شطرًا واحدًا · كلمتين من صلب المعنى · أو صيغةً أخرى للمعنى نفسه.');
+  return reasons;
+}
+
 const SORTS = {
   score: (a, b) => (b.score ?? 0) - (a.score ?? 0),
   oldest: (a, b) => (a.deathYear ?? Infinity) - (b.deathYear ?? Infinity),
@@ -243,7 +327,7 @@ function renderVerses(tail) {
     .filter((v) => allowed.has(v.source?.trust ?? 'circulated'))
     .sort(sort);
   results.replaceChildren();
-  for (const v of shown) results.append(card(v));
+  shown.forEach((v, i) => results.append(card(v, i + 1)));
 
   const hidden = lastVerses.length - shown.length;
   $('filters').hidden = !lastVerses.length;
@@ -255,10 +339,15 @@ function renderVerses(tail) {
   note.textContent = (shown.length && $('sort').value === 'score' && basis) ? (lastRanking.note ?? rankingNote(basis) ?? '') : '';
   note.classList.toggle('weak', basis === 'lexical');
 
+  // ★ نطاقُ البحث يُقال للباحث ★ — فلا يقول «ليس في الشعر العربي»، وإنما
+  //   «ليس فيما فُهرس». وهذا فرقٌ يهمّ من يكتب بحثًا.
+  renderScope();
+
   // ★ العدّاد يصف ما على الشاشة لا ما جاء من البحث ★
   setStatus(shown.length
     ? `${countLabel(shown.length, MATCHED_VERSE)}${statusTail}`
     : (lastVerses.length ? 'كلُّ ما وُجد مُخفًى بالمرشِّح أعلاه.' : ''));
+
 
   // ★ لقارئ الشاشة: البطاقة عنصرٌ له عنوان، لا كتلةٌ صامتة ★
   results.setAttribute('aria-busy', 'false');
@@ -356,6 +445,7 @@ async function search() {
   }
 
   const verses = splitVerses(raw);
+  askedVerse = raw;
   const useCouncil = $('use-council')?.checked && Boolean(capabilities?.council);
   history.add(raw);
   renderHistory();
@@ -431,13 +521,18 @@ async function search() {
 
   if (!lastVerses.length) {
     if (authFailed) { warnAuth(); return; }
-    const why = (bridgeFailed || !capabilities)
-      ? ' والمكتبة الحيّة غير متاحة الآن، فلم يُبحث إلا في الفهرس المنشور.' : '';
     // ★ لا تُركَّب الجملة على ناتج العدد: «قُرئت لم تُقرأ صفحة» كسرٌ ظاهر ★
     const read = pagesRead ? ` — قُرئت ${countLabel(pagesRead, PAGE)}` : '';
-    const advise = useCouncil ? ' جرّب صياغةً أخرى للبيت.'
-      : (capabilities?.council ? ' وقد يوسّع «مجلس النماذج» المدخل.' : '');
-    setStatus(`لم يُوجد بيتٌ موافق${read}.${why}${advise}`);
+    setStatus(`لم يُوجد بيتٌ موافق${read}.`);
+    // ★ والصفرُ بلا تفسيرٍ يوقع الباحث في ظنٍّ خاطئ: أن المعنى لم يقله أحد. ★
+    //   والعلّة في الغالب في نطاق البحث لا في الشعر — فتُفصَّل له.
+    const reasons = await emptyExplanation();
+    const box = document.createElement('div');
+    box.className = 'empty-why';
+    box.innerHTML = '<h2>لم يُوجد بيتٌ موافق — وهذه علّةُ ذلك</h2><ul>'
+      + reasons.map((r) => `<li>${esc(r)}</li>`).join('') + '</ul>';
+    results.replaceChildren(box);
+    renderScope();
     return;
   }
 
@@ -476,6 +571,11 @@ for (const t of tabs) {
 btn.addEventListener('click', search);
 q.addEventListener('input', refreshSearchButton);
 q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) search(); });
+$('tashkeel')?.addEventListener('change', (e) => {
+  showTashkeel = e.target.checked;
+  localStorage.setItem(TASHKEEL_KEY, showTashkeel ? 'on' : 'off');
+  renderVerses();
+});
 for (const c of document.querySelectorAll('.trust-filter')) c.addEventListener('change', () => renderVerses());
 $('sort')?.addEventListener('change', () => renderVerses());
 

@@ -73,6 +73,10 @@ function readNeighbors(file) {
 const verses = await readVerses(IN);
 const neighbors = readNeighbors(NEIGHBORS);
 const built = buildIndex(verses, { neighbors });
+// ★ نطاقُ البحث يجب أن يكون معلومًا للباحث ★ — فلا يقول «ليس في الشعر العربي»
+//   وإنما «ليس فيما فُهرس». (كم كتابًا؟ وكم شاعرًا؟)
+built.meta.books = new Set(verses.map((v) => v.source?.bookName).filter(Boolean)).size;
+built.meta.poets = new Set(verses.map((v) => v.poet).filter(Boolean)).size;
 
 fs.mkdirSync(OUT, { recursive: true });
 const tok = writeShards(path.join(OUT, 't'), built.tokens);

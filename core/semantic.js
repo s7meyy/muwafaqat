@@ -21,7 +21,7 @@ export function cosine(a, b) {
 const STOP = new Set(['من', 'في', 'علي', 'عن', 'الي', 'ما', 'لا', 'ان', 'قد', 'هذا', 'التي',
   'الذي', 'كان', 'كل', 'بين', 'مع', 'او', 'ثم', 'لم', 'لن', 'هو', 'هي', 'به', 'له', 'وما', 'ولا']);
 
-function contentWords(text) {
+export function contentWords(text) {
   return normalize(text).split(' ').filter((w) => w.length >= 3 && !STOP.has(w));
 }
 

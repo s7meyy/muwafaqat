@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>الموافقات</title>
 <meta name="description" content="أدخل بيتًا، تخرج أبياتٌ توافقه في المعنى — كلٌّ بقائله وعصره ومصدره.">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -93,6 +95,9 @@
         <option value="poet">باسم الشاعر</option>
       </select>
     </label>
+    <label class="check" for="tashkeel" title="الفهرس فيه المشكول وغيره — وحّد العرض كما تشاء">
+      <input type="checkbox" id="tashkeel" checked><span>بالشكل</span>
+    </label>
     <span class="filters-label">اعرض:</span>
     <label class="check"><input type="checkbox" class="trust-filter" value="documented" checked><span>🟢 موثَّق</span></label>
     <label class="check"><input type="checkbox" class="trust-filter" value="published" checked><span>🟡 منشور</span></label>
@@ -100,6 +105,7 @@
   </section>
 
   <section id="status" class="status" role="status" aria-live="polite" hidden></section>
+  <p id="scope-note" class="scope-note" aria-live="polite"></p>
   <p id="filter-note" aria-live="polite"></p>
   <p id="ranking-note" class="ranking-note" aria-live="polite"></p>
   <section id="results" class="results" aria-label="الأبيات الموافقة"></section>

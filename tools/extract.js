@@ -78,6 +78,7 @@ async function booksIn(categoryId) {
 
 // ★ يُرفع علمٌ حين ينقطع القراءة، لا أن تُبتلع صامتة. ★
 let readFailed = false;
+let autoNumbered = false;   // أترقّم الشاملةُ صفحاتِ هذا الكتاب آليًّا؟
 
 async function* pagesOf(bookId) {
   let start = 1;
@@ -90,6 +91,8 @@ async function* pagesOf(bookId) {
     } catch { readFailed = true; return; }
     const pages = r?.pages ?? [];
     if (!pages.length) return;
+    // ★ حالُ الترقيم خبرٌ عن الكتاب لا عن الصفحة ★ — والباحث يُحيل به، فيُحفظ
+    autoNumbered = Boolean(r?.citation_auto_numbered);
     for (const p of pages) yield p;
     if (!r.has_more) return;
     start = r.next_start_page_id ?? (pages[pages.length - 1].page_id + 1);
@@ -201,6 +204,7 @@ async function main() {
           lifespanSource: life?.source ? { label: life.source.label } : null,
           source: {
             bookId: book.book_id, bookName: book.book_name, bookAuthor: book.author_name,
+            autoNumbered,
             category: book.category ?? book.category_id, pageId: page.page_id, printedPage: page.printed_page,
           },
         }) + '\n');

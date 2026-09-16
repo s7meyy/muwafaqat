@@ -42,9 +42,41 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .hint{color:var(--muted);font-size:.9rem}
 .status{margin-top:20px;color:var(--muted);text-align:center}
 .results{margin-top:22px;display:grid;gap:16px;padding-bottom:40px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
-.verse{font-size:1.25rem;line-height:2.2;margin:0 0 12px}
-.verse .sep{color:var(--muted);padding:0 .5em}
+.card{position:relative;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+
+/* ★ البيت يُعرض شِعرًا لا نثرًا. ★
+   شطران متقابلان بينهما فاصل — لا سطرٌ يلتفّ حيث انتهت الشاشة فيقطع الصدر
+   في موضعٍ لا معنى له. والباحث يقرأ الشطرين موزونين كما في الدواوين. */
+.verse{
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:baseline;
+  gap:0 .4em;margin:0 0 10px;
+  font-family:"Amiri","Scheherazade New","Noto Naskh Arabic",serif;
+  font-size:1.5rem;line-height:2.1;letter-spacing:0;
+}
+.verse .hemistich{min-width:0}
+.verse .hemistich:first-child{text-align:start}
+.verse .hemistich:last-child{text-align:end}
+.verse .hemistich.whole{grid-column:1/-1;text-align:center}
+.verse .sep{color:var(--accent);opacity:.45;font-size:.8em;padding:0 .2em}
+/* ★ تظليلُ ما شارك فيه بيتَك — فيرى الباحث بعينه سببَ الجمع ★ */
+.verse mark{background:color-mix(in srgb,var(--accent) 16%,transparent);
+  color:inherit;border-radius:4px;padding:0 .12em}
+@media (max-width:620px){
+  .verse{grid-template-columns:1fr;text-align:center;font-size:1.3rem;gap:0}
+  .verse .hemistich:first-child,.verse .hemistich:last-child{text-align:center}
+  .verse .sep{display:none}
+}
+
+/* ★★ «لماذا ظهر هذا البيت؟» ★★ — أنفعُ سطرٍ في البطاقة للباحث، وبغيره
+   لا يفرّق بين موافقةٍ في المعنى ومصادفةِ لفظ. */
+.why{margin:0 0 12px;font-size:.9rem;color:var(--muted);line-height:1.8}
+.why::before{content:"› ";opacity:.6}
+.why-sense{color:var(--info)}
+.why-none{color:var(--warn)}
+
+/* ترقيمُ النتائج — ليُحيل الباحث إلى «الثالث» في مذكّرته */
+.rank{position:absolute;inset-inline-start:14px;top:12px;
+  color:var(--muted);opacity:.5;font-size:.85rem}
 .meta{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:.92rem;color:var(--muted)}
 .poet{color:var(--ink);font-weight:600}
 .badge{border-radius:999px;padding:2px 10px;font-size:.82rem;border:1px solid currentColor}
@@ -143,6 +175,11 @@ button{min-height:44px}
 .badge.t-agreed{color:var(--ok)}
 .badge.t-sense{color:var(--info);border-color:color-mix(in srgb,var(--info) 40%,transparent)}
 #filter-note{color:var(--muted);font-size:.86rem;margin-top:8px;text-align:center}
+.scope-note{color:var(--muted);font-size:.84rem;margin:10px 0 0;text-align:center;opacity:.85}
+/* ★ الصفرُ بلا تفسيرٍ يوقع الباحث في ظنٍّ خاطئ: أن المعنى لم يقله أحد ★ */
+.empty-why{background:var(--accent-soft);border:1px solid var(--line);border-radius:14px;padding:18px 22px}
+.empty-why h2{margin:0 0 10px;font-size:1.05rem}
+.empty-why ul{margin:0;padding-inline-start:1.2em;line-height:2;color:var(--muted)}
 
 /* ── أزرار البطاقة ── */
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}

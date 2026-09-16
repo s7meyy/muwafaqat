@@ -49,7 +49,7 @@ function fitShards(count, per, max) {
 }
 
 // كلماتٌ لا تُفهرس: تقع في كل بيتٍ فلا تميّز شيئًا، وتُضخّم الفهرس بلا فائدة
-const NOT_INDEXED = new Set([
+export const NOT_INDEXED = new Set([
   'من', 'في', 'علي', 'عن', 'الي', 'ما', 'لا', 'ان', 'قد', 'هذا', 'هذه', 'ذلك',
   'التي', 'الذي', 'كان', 'كل', 'بين', 'مع', 'او', 'ثم', 'لم', 'لن', 'هو', 'هي',
   'به', 'له', 'بها', 'وما', 'ولا', 'يا', 'ولو', 'اذا', 'كما', 'حتي', 'لكن', 'بل',
@@ -78,7 +78,7 @@ const PREFIXES = ['وبال', 'فبال', 'بال', 'كال', 'فال', 'وال'
 // والتجريدُ بلا تحليلٍ صرفيّ يُصيب في الطويل ويخطئ في القصير، فيُقصر عليه.
 const MIN_BARE = 4;
 
-function stripPrefixes(word) {
+export function stripPrefixes(word) {
   for (const p of PREFIXES) {
     if (word.startsWith(p) && word.length - p.length >= MIN_BARE) return word.slice(p.length);
   }
@@ -136,6 +136,10 @@ export function toRecord(verse, id) {
     p: verse.poet ?? null,
     d: verse.deathYear ?? null,
     b: s.bookName ?? null,
+    // ★ الإحالة العلمية تبدأ بالمؤلّف ★ — والباحث ينسخها كما هي إلى حاشيته
+    a: s.bookAuthor ?? null,
+    // أترقيمُ الصفحة من المطبوع أم من الشاملة آليًّا؟ فرقٌ يهمّ من يُحيل
+    u: s.autoNumbered ? 1 : 0,
     g: s.printedPage ?? null,
     k: s.bookId ?? null,
     q: s.pageId ?? null,
@@ -175,6 +179,8 @@ export function fromRecord(rec) {
       kind: 'index',
       trust: 'documented',          // الفهرس مبنيٌّ من كتبٍ محقَّقة
       bookName: rec.b ?? null,
+      bookAuthor: rec.a ?? null,
+      autoNumbered: Boolean(rec.u),
       printedPage: rec.g ?? null,
       bookId: rec.k ?? null,
       pageId: rec.q ?? null,
