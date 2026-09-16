@@ -70,6 +70,10 @@ const HIDDEN = { zero: 'لا شيء', one: 'بيتٌ واحد', two: 'بيتان
 
 let lastVerses = [];
 let askedVerse = '';        // بيتُ السائل — به يُعرف سببُ ظهور كلّ نتيجة
+// ★ ومن لصق قصيدةً: كلُّ نتيجةٍ تُنسب إلى البيت الذي أوجبها من أبياته. ★
+//   كان السببُ يُحسب على مجموع ما لُصق، فيُقال «لم يشترك إلا في: فقد» — و«فقد»
+//   من بيته الأول لا الثاني، فيصير الجوابُ بلا معنًى كلما كثُر السؤال.
+let askedList = [];
 let capabilities = null;   // ما يقدر عليه الجسر: تفريغ · مجلس · شبكة
 let searching = false;
 let imageApproved = false;
@@ -231,7 +235,7 @@ function card(v, rank = 0) {
 
   // ★ البيت يُعرض شِعرًا لا نثرًا: ★ شطران متقابلان، لا سطرٌ يلتفّ حيث انتهت
   //   الشاشة فيقطع الصدرَ في موضعٍ لا معنى له.
-  const hemistich = (t) => markShared(shaped(t), askedVerse)
+  const hemistich = (t) => markShared(shaped(t), v.askedFor ?? askedVerse)
     .map((w) => (w.shared ? `<mark>${esc(w.word)}</mark>` : esc(w.word)))
     .join(' ');
   const verseHtml = v.ajz
@@ -242,8 +246,10 @@ function card(v, rank = 0) {
 
   // ★★ «لماذا ظهر هذا البيت؟» — وهي أنفع سطرٍ في البطاقة للباحث. ★★
   //   بغيرها لا يفرّق بين موافقةٍ في المعنى ومصادفةِ لفظٍ مشترك.
-  const why = v.why ?? matchReason(v, askedVerse);
-  const whyHtml = `<p class="why why-${why.kind}">${ar(esc(why.label))}</p>`;
+  const why = v.why ?? matchReason(v, v.askedFor ?? askedVerse);
+  const forWhich = (askedList.length > 1 && v.askedFor)
+    ? `<span class="for-which"> — عن بيتك: «${esc(v.askedFor.replace(/\s*(?:\.{3}|…).*$/, '').slice(0, 34))}…»</span>` : '';
+  const whyHtml = `<p class="why why-${why.kind}">${ar(esc(why.label))}${forWhich}</p>`;
 
   el.innerHTML = `
     ${rank ? `<span class="rank" aria-hidden="true">${ar(String(rank))}</span>` : ''}
@@ -262,6 +268,7 @@ function card(v, rank = 0) {
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>
       ${s.bookId && capabilities ? '<button type="button" data-act="ctx" class="quiet">أرِني الصفحة</button>' : ''}
+      <button type="button" data-act="more" class="quiet">أبياتٌ كهذا</button>
       <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
       <button type="button" data-act="fix" class="quiet">صحّح النسبة</button>
       <button type="button" data-act="no" class="quiet">ليس موافقًا</button>
@@ -275,6 +282,15 @@ function card(v, rank = 0) {
       setTimeout(() => { e.target.textContent = 'انسخ'; }, 1600);
     } catch { e.target.textContent = 'تعذّر النسخ'; }
   });
+  // ★ «أبياتٌ كهذا» — توسيعُ البحث من نتيجةٍ لا من السؤال الأوّل. ★
+  //   وهو أكثرُ ما يفعله الباحث حين يقع على بيتٍ قريب: يتتبّعه لا يعود أدراجه.
+  el.querySelector('[data-act="more"]').addEventListener('click', () => {
+    q.value = v.text;
+    refreshSearchButton();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    search();
+  });
+
   // ★ الإحالة جاهزةٌ للحاشية ★ — والباحث كان ينسخها بيده من ثلاثة مواضع
   el.querySelector('[data-act="cite"]').addEventListener('click', async (e) => {
     try {
@@ -389,7 +405,7 @@ function renderVerses(tail) {
   const allowed = allowedTrusts();
   const sort = SORTS[$('sort')?.value] ?? SORTS.score;
   // سببُ ظهور كل بيت يُحسب مرّةً هنا: تُرتَّب به البطاقات وتُرشَّح، ويُعرض فيها
-  for (const v of lastVerses) v.why = matchReason(v, askedVerse);
+  for (const v of lastVerses) v.why = matchReason(v, v.askedFor ?? askedVerse);
   const hideWeak = $('hide-weak')?.checked;
   // ★ البحث داخل النتائج ★ — من جمع أربعين بيتًا يريد «ما كان للمتنبي منها»
   const within = normalizeQuery($('within')?.value ?? '');
@@ -482,7 +498,8 @@ function renderNotebook() {
         <input data-tags value="${esc((v.tags ?? []).join('، '))}" placeholder="الفخر، صورة الدهر">
       </label>
       <div class="nb-actions">
-        <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
+        <button type="button" data-act="more" class="quiet">أبياتٌ كهذا</button>
+      <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
         <button type="button" data-act="drop" class="quiet">احذف من الدفتر</button>
       </div>`;
 
@@ -517,6 +534,46 @@ function renderNotebook() {
 function notebookItems() {
   const group = $('group-name')?.value.trim() || null;
   return saved.all(group);
+}
+
+/**
+ * ★ «بيتُك في المكتبة» — تحقيقُ بيت السائل قبل طلب موافقاته. ★
+ *
+ * كان البيت الذي يسأل به يُستبعد من النتائج (فهو ليس موافقةً لنفسه) ★ ويُطرح
+ * صامتًا ★، حتى ليُقال «لم يُوجد بيتٌ موافق» وبيتُه في ديوان لبيد ص٤٨!
+ * والباحث يسأل أوّلًا: أين بيتي من الكتب؟ وبأيّ روايةٍ؟ ولمن نسبوه؟
+ */
+function renderItself(list) {
+  const box = $('itself');
+  const body = $('itself-list');
+  if (!box || !body) return;
+  box.hidden = !list.length;
+  if (!list.length) return;
+
+  const poets = [...new Set(list.map((v) => v.poet).filter(Boolean))];
+  const head = document.createElement('p');
+  head.className = 'hint';
+  head.textContent = `وُجد في ${countLabel(list.length, PLACE)}`
+    + (poets.length > 1 ? ` · ★ واختلفت الكتب في قائله: ${poets.join('، و')} — ولم يُرجَّح.` : '')
+    + (poets.length === 1 ? ` · والنسبةُ فيه إلى ${poets[0]}` : '')
+    + (!poets.length ? ' · ولم يُنسب فيها إلى أحد' : '');
+
+  body.replaceChildren(head);
+  for (const v of list) {
+    const el = document.createElement('div');
+    el.className = 'itself-row';
+    const s = v.source ?? {};
+    el.innerHTML = `
+      <p class="verse small"><span class="hemistich">${esc(shaped(v.sadr ?? v.text))}</span>
+        ${v.ajz ? `<span class="sep" aria-hidden="true">۞</span><span class="hemistich">${esc(shaped(v.ajz))}</span>` : ''}</p>
+      <p class="src">${esc(s.bookName ?? '')}${s.printedPage ? ` — ص ${ar(String(s.printedPage))}` : ''}
+        ${s.url ? `· <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">افتح المصدر ↗</a>` : ''}
+        ${v.poet ? `· ينسبه إلى <strong>${esc(v.poet)}</strong>` : '· بلا نسبة'}
+        ${v.meter ? `· ${esc(v.meter)}` : ''}</p>
+      ${v.variant ? `<p class="src">وفي روايةٍ: ${esc(v.variant)}</p>` : ''}
+      ${v.doubted ? '<p class="caveat">وردَ بين معقوفتين — علامةُ المحقّق على الشكّ فيه.</p>' : ''}`;
+    body.append(el);
+  }
 }
 
 /** ما بحثتَ عنه قريبًا — يُستعاد بنقرة. */
@@ -605,6 +662,7 @@ async function search() {
 
   const verses = splitVerses(raw);
   askedVerse = raw;
+  askedList = verses;
   const useCouncil = $('use-council')?.checked && Boolean(capabilities?.council);
   history.add(raw);
   renderHistory();
@@ -616,11 +674,13 @@ async function search() {
   btn.classList.add('stopping');
   results.replaceChildren();
   lastVerses = [];
+  $('itself').hidden = true;
   $('filters').hidden = true;
   $('council').hidden = true;
 
   // ★ الأبيات المتعددة تُبحث بيتًا بيتًا وتُجمع — كانت تُبحث نصًّا واحدًا فتُخفق ★
   const merged = new Map();
+  const itselfFound = [];         // بيتُ السائل كما ورد في الكتب
   let pagesRead = 0, rejectedCount = 0, anyCouncil = null, anyWeb = null;
   let bridgeFailed = false, authFailed = TOKEN_MALFORMED;
 
@@ -644,6 +704,9 @@ async function search() {
     if (!data) { try { data = await searchStatic(verse, { excludeVerse: verse }); } catch { data = null; } }
     if (!data) continue;
 
+    for (const v of data.itself ?? []) {
+      if (!itselfFound.some((o) => o.text === v.text && o.source?.bookId === v.source?.bookId)) itselfFound.push(v);
+    }
     pagesRead += data.pagesRead ?? 0;
     rejectedCount += data.rejectedCount ?? 0;
     anyCouncil ??= data.council ?? null;
@@ -662,9 +725,12 @@ async function search() {
         prev.matchedQueries = [...new Set([...(prev.matchedQueries ?? []), ...(v.matchedQueries ?? [])])];
         // ما بلغه اللفظُ والمعنى معًا أوثقُ موافقةً، فيُحفظ وسمُ المعنى فيه
         if (v.semantic) { prev.semantic = true; prev.similarity ??= v.similarity; }
-      } else merged.set(v.text, v);
+        if (!prev.askedFor) prev.askedFor = verse;
+      } else merged.set(v.text, { ...v, askedFor: verse });
     }
   }
+
+  renderItself(itselfFound);
 
   const stopped = controller.signal.aborted;
   lastVerses = [...merged.values()];
@@ -686,6 +752,7 @@ async function search() {
     // ★ والصفرُ بلا تفسيرٍ يوقع الباحث في ظنٍّ خاطئ: أن المعنى لم يقله أحد. ★
     //   والعلّة في الغالب في نطاق البحث لا في الشعر — فتُفصَّل له.
     const reasons = await emptyExplanation();
+    if (itselfFound.length) reasons.unshift('★ لكنّ بيتك نفسه في المكتبة — انظر «بيتُك في المكتبة» أعلاه.');
     const box = document.createElement('div');
     box.className = 'empty-why';
     box.innerHTML = '<h2>لم يُوجد بيتٌ موافق — وهذه علّةُ ذلك</h2><ul>'

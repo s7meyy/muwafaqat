@@ -38,7 +38,7 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
   }
 
   // ★ عددُ الشظايا يُقرأ من الفهرس نفسه، لا يُفترض ثابتًا ★
-  const { verses, scanned } = await searchIndex(query, loadShard, {
+  const { verses, itself, scanned } = await searchIndex(query, loadShard, {
     limit, excludeVerse: excludeVerse ?? query,
     tokenShards: meta.tokenShards, verseShards: meta.verseShards,
   });
@@ -53,6 +53,8 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
       //   «١» دائمًا، فيضيع التعاضدُ الذي بُني وقت الفهرسة.
       occurrences: v.occurrences ?? 1,
     })),
+    // ★ «بيتُك في المكتبة» — مواضعُه ورواياتُه ونسبتُه ★
+    itself: (itself ?? []).map((v) => ({ ...v, evidence: { documentId: `index:${v.source.bookId}:${v.source.pageId}`, matched: 'index' } })),
     pagesRead: 0,
     rejectedCount: 0,
     fromIndex: true,

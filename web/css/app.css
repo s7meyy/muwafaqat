@@ -279,3 +279,12 @@ button.stopping{background:var(--danger)}
 .glosses dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.9rem}
 .glosses dt{font-weight:700;color:var(--ink)}
 .glosses dd{margin:0;color:var(--muted)}
+
+/* ★ «بيتُك في المكتبة» — تحقيقُ بيت السائل قبل موافقاته ★ */
+.itself{margin-top:18px;background:var(--accent-soft);border:1px solid var(--line);
+  border-radius:16px;padding:16px 20px}
+.itself h2{margin:0 0 4px;font-size:1rem}
+.itself-row{border-top:1px solid var(--line);padding:10px 0 4px;margin-top:8px}
+.itself-row:first-of-type{border-top:0}
+.verse.small{font-size:1.15rem;margin-bottom:4px}
+.for-which{color:var(--muted);opacity:.85}

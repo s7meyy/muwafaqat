@@ -418,16 +418,23 @@ export async function searchIndex(query, load, {
   for (const [b, p] of verseBuckets) stores.set(b, await p);
 
   const out = [];
+  // ★ بيتُ السائل نفسه لا يُطرح صامتًا. ★
+  //   كان يُستبعد فيُقال «لم يُوجد بيتٌ موافق» — وبيتُه في المكتبة بصفحته
+  //   وروايته ونسبته! والباحث يريد تحقيق بيته قبل أن يطلب موافقاته.
+  const itself = [];
   for (const [id, hits] of candidates) {
     const rec = stores.get(verseBucketOf(id, verseShards))?.[id];
     if (!rec) continue;
-    if (isSameVerse(rec.t)) continue;
+    if (isSameVerse(rec.t)) {
+      if (itself.length < 6) itself.push({ ...fromRecord(rec), matchedTerms: hits });
+      continue;
+    }
     if (!withinProximity(rec.t, terms, proximity)) continue;
     out.push({ ...fromRecord(rec), matchedTerms: hits });
-    if (out.length >= limit) break;
+    if (out.length >= limit && itself.length) break;
   }
 
-  return { verses: out, terms, scanned: candidates.length };
+  return { verses: out, itself, terms, scanned: candidates.length };
 }
 
 /**

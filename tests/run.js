@@ -1177,6 +1177,29 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   ok('وقوسا الشاهد يُقصَّان كما كانا', !shahid[0].sadr.startsWith('(') && !shahid[0].ajz.endsWith(')'));
 }
 
+// ── «بيتُك في المكتبة» ────────────────────────────────────────────────────
+// ★ كان بيتُ السائل يُستبعد من النتائج ويُطرح صامتًا. ★
+{
+  const verses = [
+    { text: 'يذكرني بأربد كل خصم ... ألد تخال خطته ضرارا', poet: 'لبيد بن ربيعة', deathYear: 41,
+      meter: 'الوافر', source: { bookName: 'ديوان لبيد', bookId: 35077, pageId: 43, printedPage: '48' } },
+    { text: 'إذا اقتصدوا فمقتصد أريب ... وإن جاروا سواء الحق جارا', poet: 'لبيد بن ربيعة',
+      source: { bookName: 'ديوان لبيد', bookId: 35077, pageId: 43, printedPage: '48' } },
+  ];
+  const ix = buildIndex(verses);
+  const load = async (kind, bucket) => (kind === 'tokens' ? ix.tokens.get(bucket) : ix.store.get(bucket)) ?? {};
+  const opts = { tokenShards: ix.meta.tokenShards, verseShards: ix.meta.verseShards };
+
+  const r = await searchIndex('يذكرني بأربد كل خصم ... ألد تخال خطته ضرارا', load,
+    { ...opts, excludeVerse: 'يذكرني بأربد كل خصم ... ألد تخال خطته ضرارا' });
+  ok('★ بيتُك لا يعود جوابًا لنفسه', !r.verses.some((v) => /يذكرني/.test(v.text)));
+  eq('★ ولكنّه يُردّ في بابه: «بيتُك في المكتبة»', r.itself?.length, 1,
+     'كان يُقال «لم يُوجد بيتٌ موافق» وبيتُه في ديوان لبيد ص٤٨ بروايته ونسبته وبحره');
+  eq('ومعه كتابه وصفحته', r.itself[0].source.printedPage, '48');
+  eq('ونسبتُه', r.itself[0].poet, 'لبيد بن ربيعة');
+  eq('وبحرُه كما في الديوان', r.itself[0].meter, 'الوافر');
+}
+
 // ── الخلاصة ───────────────────────────────────────────────────────────────
 const line = '─'.repeat(52);
 process.stdout.write(`\n${line}\n`);
