@@ -241,15 +241,42 @@ button.stopping{background:var(--danger)}
   border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .nb-actions{display:flex;gap:10px;margin-top:10px}
 
-/* ★ الطباعة: ورقةٌ نظيفة — الأبيات وإحالاتها، بلا زرٍّ ولا لون ★ */
+/* ★ الطباعة: ورقةٌ علميّة — يأخذها الباحث إلى مكتبه. ★
+   وكانت تُخفي العلمَ وتُبقي الزينة: البحرُ والغرضُ وشرحُ الغريب وسببُ الموافقة
+   تذهب مع الأزرار، والخلفياتُ الملوّنة تُطبع، ولا ترويسةَ تدلّ على المصدر. */
 @media print{
-  .top,.tabs,.box,.search-row,.history,.saved-bar,.filters,.council,
-  .actions,.nb-actions,.nb-move,.notebook-tools,.foot,#status,#scope-note,#filter-note{display:none !important}
-  body{background:#fff;color:#000}
-  .card,.nb-item{border:0;border-bottom:1px solid #ccc;break-inside:avoid;padding:8pt 0}
-  .verse{font-size:15pt}
+  .top,.tabs,.box,.search-row,.history,.saved-bar,.filters,.council,.skip,
+  .actions,.nb-actions,.nb-move,.notebook-tools,.foot,#status,#filter-note,
+  .empty-why,.examples,.limits{display:none !important}
+  body{background:#fff;color:#000;font-size:11pt}
+  /* ترويسةٌ تقول من أين جاءت الورقة ومتى */
+  main::before{
+    content:"الموافقات — أبياتٌ متوافقةٌ في المعنى، كلٌّ بقائله ومصدره";
+    display:block;border-bottom:1px solid #999;padding-bottom:4pt;margin-bottom:10pt;
+    font-size:9pt;color:#444}
+  #scope-note{display:block;font-size:8.5pt;color:#555;text-align:start;margin:0 0 8pt}
+  .card,.nb-item,.itself{border:0;border-bottom:1px solid #ccc;break-inside:avoid;
+    padding:8pt 0;background:#fff !important}
+  .itself{border:1px solid #999;padding:8pt;margin-bottom:10pt}
+  .verse{font-size:14pt}
+  .verse mark{background:transparent;border-bottom:1px dotted #666;color:#000}
+  /* ★ العلمُ يُطبع: البحرُ والغرضُ وشرحُ الغريب وسببُ الموافقة ★ */
+  .said,.why,.glosses,.prosody,.caveat,.src{display:block !important;color:#333}
+  .glosses dl{display:block}
+  .glosses dt{display:inline;font-weight:700}
+  .glosses dt::after{content:": "}
+  .glosses dd{display:inline;margin:0}
+  .glosses dd::after{content:" · "}
+  .glosses summary{display:none}
+  /* ★ المطويّ يُفتح في الورقة: ★ المتصفّح يُخفي محتوى <details> ما لم يُفتح،
+     فكان شرحُ الغريب يُطبع عنوانًا بلا شرح. */
+  details{display:block !important}
+  details > *{display:block !important}
+  .glosses dl{display:block !important}
+  .prosody details{display:none !important}   /* التقطيع أداةُ عملٍ لا نتيجةَ بحث */
+  .rank{position:static;color:#666}
   a{color:#000;text-decoration:none}
-  a[href]::after{content:" (" attr(href) ")";font-size:8pt;color:#555}
+  a[href^="http"]::after{content:" [" attr(href) "]";font-size:7.5pt;color:#666}
 }
 .prosody details{display:inline}
 .prosody summary{display:inline;cursor:pointer;color:var(--accent);margin-inline-start:10px}
@@ -288,3 +315,12 @@ button.stopping{background:var(--danger)}
 .itself-row:first-of-type{border-top:0}
 .verse.small{font-size:1.15rem;margin-bottom:4px}
 .for-which{color:var(--muted);opacity:.85}
+
+/* تخطٍّ إلى النتائج — عشرون عنصرًا قابلًا للتركيز تسبقها */
+.skip{position:absolute;inset-inline-start:-9999px;top:0;background:var(--accent);color:#fff;
+  padding:8px 16px;border-radius:0 0 10px 10px;z-index:10}
+.skip:focus{inset-inline-start:50%;transform:translateX(50%)}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.results-head{text-align:center;font-size:1rem;color:var(--muted);margin:18px 0 4px;font-weight:400}
+.more-poets{display:inline}
+.more-poets summary{display:inline;cursor:pointer;color:var(--accent)}

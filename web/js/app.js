@@ -14,7 +14,7 @@ import { citationOf } from '../../core/citation.js';
 import { rhyme, meterOf } from '../../core/prosody.js';
 import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
-import { splitVerses, looksArabic } from '../../core/input.js';
+import { splitVerses, looksArabic, inputKind } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
 import { searchStatic, semanticMatches, indexMeta } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
@@ -140,9 +140,15 @@ function card(v, rank = 0) {
 
   // ★ اختلافُ الكتب في القائل خبرٌ يُقال، لا يُرجَّح فيه ولا يُكتم. ★
   //   وكثيرٌ من الشعر مختلَفٌ في نسبته، وعرضُ قولٍ واحدٍ كأنه إجماعٌ تدليس.
+  // ★ وكثرةُ المختلفين لا تُسرد في سطر: ★ بيتٌ تنسبه عشرةُ كتبٍ لعشرةٍ يملأ
+  //   البطاقة بالأسماء. فثلاثةٌ ثم عددُ الباقين، وتُكشف عند الطلب.
   const disputed = v.disputedPoets
     ? `<p class="caveat">اختُلف في نسبته — نسبَه بعضُ الكتب إلى ${
-        v.disputedPoets.map(esc).join('، وبعضُها إلى ')}. ولم يُرجَّح.</p>`
+        v.disputedPoets.slice(0, 3).map(esc).join('، وبعضُها إلى ')}`
+      + (v.disputedPoets.length > 3
+        ? `، <details class="more-poets"><summary>وإلى ${ar(String(v.disputedPoets.length - 3))} غيرهم</summary>`
+          + `${v.disputedPoets.slice(3).map(esc).join(' · ')}</details>` : '')
+      + '. ولم يُرجَّح.</p>'
     : '';
 
   const life = v.deathYear
@@ -419,6 +425,8 @@ function renderVerses(tail) {
     .sort(sort);
   results.replaceChildren();
   shown.forEach((v, i) => results.append(card(v, i + 1)));
+  const head = $('results-head');
+  if (head) head.hidden = !shown.length;
 
   const hidden = lastVerses.length - shown.length;
   $('filters').hidden = !lastVerses.length;
@@ -656,12 +664,30 @@ async function search() {
   }
   const raw = q.value.trim();
 
-  if (!raw) { setStatus('اكتب بيتًا أولًا.', 'warn'); return; }
+  // ★ كلُّ سؤالٍ يمسح جوابَ ما قبله. ★ كانت نتائجُ السؤال السابق تبقى تحت
+  //   رسالةِ رفضٍ أو خطأ، فيصف العدّادُ ما ليس جوابًا للمكتوب.
+  const clearPrevious = () => {
+    results.replaceChildren();
+    lastVerses = [];
+    $('itself').hidden = true;
+    $('filters').hidden = true;
+    $('results-head').hidden = true;
+    renderVerses('');
+  };
+
+  if (!raw) { clearPrevious(); setStatus('اكتب بيتًا أولًا.', 'warn'); return; }
   // ★ «لا نتيجة» و«هذا ليس بيتًا» جوابان مختلفان — وخلطُهما يُضلّل ★
   if (!looksArabic(raw)) {
-    setStatus('هذا لا يبدو بيتًا عربيًّا. اكتب بيتًا أو شطرًا بالعربية.', 'warn');
+    clearPrevious();
+    setStatus('هذا لا يبدو نصًّا عربيًّا. اكتب بيتًا أو شطرًا أو كلمةً بالعربية.', 'warn');
     return;
   }
+
+  // ★ ما لُصق نثرًا يُقال له ما هو، ولا يُمنع. ★
+  const kind = inputKind(raw);
+  const kindNote = kind === 'prose'
+    ? ' — وما كتبتَه يبدو نثرًا لا بيتًا، فبُحث بكلماته'
+    : (kind === 'word' ? ' — بحثٌ بكلمة، لا ببيت' : '');
 
   const verses = splitVerses(raw);
   askedVerse = raw;
@@ -768,6 +794,7 @@ async function search() {
   const bits = [];
   if (pagesRead) bits.push(` — ${countLabel(pagesRead, PAGES_READ)}`);
   if (rejectedCount) bits.push(` · ${countLabel(rejectedCount, SUGGESTION)} لم يثبت في مصدرٍ فلم يُعرض`);
+  if (kindNote) bits.push(kindNote);
   if (bridgeFailed || !capabilities) bits.push(' · من الفهرس المنشور وحده');
   if (stopped) bits.push(' · أُوقف البحث قبل تمامه');
   renderVerses(bits.join(''));
@@ -857,6 +884,19 @@ $('nb-bib')?.addEventListener('click', () => {
   downloadText('muwafaqat.bib', bibtexAll(notebookItems()), 'application/x-bibtex');
 });
 $('nb-print')?.addEventListener('click', () => window.print());
+
+// ★ المطويّ يُفتح في الورقة ثم يُطوى بعدها. ★
+//   المتصفّح يُخفي محتوى <details> ما لم يُفتح إخفاءً لا يُبطله CSS، فكان
+//   شرحُ الغريب يُطبع عنوانًا بلا شرح — وهو أنفعُ ما في البطاقة للباحث.
+let reopened = [];
+window.addEventListener('beforeprint', () => {
+  reopened = [...document.querySelectorAll('.glosses:not([open])')];
+  for (const d of reopened) d.open = true;
+});
+window.addEventListener('afterprint', () => {
+  for (const d of reopened) d.open = false;
+  reopened = [];
+});
 $('clear-saved')?.addEventListener('click', () => {
   if (confirm('تُحذف المحفوظات كلها. أمتأكّد؟')) { saved.clear(); refreshSavedBar(); renderVerses(); }
 });

@@ -6,6 +6,8 @@
 
 import { toArabicDigits as ar } from './normalize.js';
 import { citationOf } from './citation.js';
+import { rhyme } from './prosody.js';
+import { countLabel, PLACE } from './plural.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -13,6 +15,12 @@ const esc = (t) => String(t ?? '').replace(/[&<>"]/g, (c) => (
 function hemistichs(v) {
   const [sadr, ajz] = String(v.text ?? '').split(/\s*(?:\.{3}|…)\s*/);
   return { sadr: sadr ?? v.text ?? '', ajz: ajz ?? '' };
+}
+
+/** القافيةُ تُحسب هنا كما تُحسب في البطاقة — فالملفّ صورةُ ما رآه. */
+function rhymeLabel(v) {
+  const q = rhyme(v.text);
+  return q ? `رويّ ${q.rawi}${q.tail.length > 1 ? ` (ـ${q.tail})` : ''}` : '';
 }
 
 /** «من قاله أولًا» — والباحث في الموافقات يسأل عنه قبل كل شيء. */
@@ -32,11 +40,33 @@ export function researchHtml(items, { title = 'الموافقات', chronologica
     const life = v.deathYear ? ` (ت ${ar(String(v.deathYear))}هـ${v.era?.name ? ` — ${v.era.name}` : ''})` : '';
     const note = v.note ? `<p class="note">ملاحظتك: ${esc(v.note)}</p>` : '';
     const tags = v.tags?.length ? `<p class="tags">${v.tags.map((t) => `[${esc(t)}]`).join(' ')}</p>` : '';
+
+    // ★ ما يُعرض على الشاشة يخرج في الملفّ. ★
+    //   كان الملفّ يحمل البيت والقائل والإحالة وحدها، فيرى الباحث في الموقع
+    //   بحرَ القصيدة وغرضَها وشرحَ غريبها ثم لا يجد منها شيئًا فيما يدخل بحثه.
+    const said = [];
+    if (v.meter) said.push(`البحر: ${esc(v.meter)}`);
+    if (v.purpose) said.push(`الغرض: ${esc(v.purpose)}`);
+    if (v.occasion) said.push(`قاله ${esc(v.occasion)}`);
+    const context = said.length ? `<p class="ctx">${said.join(' · ')} — من الكتاب نفسه</p>` : '';
+    const glosses = v.glosses?.length
+      ? `<p class="gloss">شرحُ غريبه (من حاشية المحقّق): ${
+          v.glosses.map((g) => `${esc(g.word)}: ${esc(g.gloss)}`).join(' · ')}</p>` : '';
+    const variant = v.variant ? `<p class="gloss">وفي روايةٍ: ${esc(v.variant)}</p>` : '';
+    const doubted = v.doubted
+      ? '<p class="gloss">وردَ بين معقوفتين في المطبوع — علامةُ المحقّق على الشكّ فيه.</p>' : '';
+    const disputed = v.disputedPoets?.length
+      ? `<p class="gloss">اختُلف في نسبته: ${v.disputedPoets.map(esc).join('، ')} — ولم يُرجَّح.</p>` : '';
+    const also = v.occurrences > 1
+      ? `<p class="gloss">ورد في ${countLabel(v.occurrences, PLACE)}${
+          v.alsoIn?.length ? `، منها: ${v.alsoIn.map(esc).join(' · ')}` : ''}.</p>` : '';
+    const why = v.why?.label ? `<p class="gloss">سببُ الموافقة: ${esc(v.why.label)}</p>` : '';
+
     return `<div class="verse-block">
   <p class="n">${ar(String(i + 1))}</p>
   <table class="bayt"><tr><td class="sadr">${esc(sadr)}</td><td class="ajz">${esc(ajz)}</td></tr></table>
   <p class="who">${esc(who)}${life}</p>
-  ${note}${tags}
+  ${context}${glosses}${variant}${doubted}${disputed}${also}${why}${note}${tags}
   <p class="cite">${esc(citationOf(v))}</p>
 </div>`;
   }).join('\n');
@@ -53,6 +83,8 @@ export function researchHtml(items, { title = 'الموافقات', chronologica
  td.sadr{text-align:right} td.ajz{text-align:left}
  .who{margin:2pt 0;font-weight:bold}
  .cite{margin:2pt 0;font-size:10pt;color:#555}
+ .ctx{margin:2pt 0;font-size:10.5pt;color:#333}
+ .gloss{margin:1pt 0;font-size:10pt;color:#444}
  .note{margin:2pt 0;font-size:11pt;color:#333}
  .tags{margin:2pt 0;font-size:10pt;color:#777}
  .foot{margin-top:24pt;font-size:9pt;color:#777;border-top:1px solid #ccc;padding-top:6pt}
@@ -67,13 +99,19 @@ ${rows}
 
 /** جدولٌ لمن يبني تحليله بنفسه. */
 export function csv(items) {
-  const head = ['البيت', 'الصدر', 'العجز', 'القائل', 'سنة الوفاة', 'العصر', 'الكتاب', 'المؤلف', 'الصفحة', 'الرابط', 'ملاحظتك', 'وسومك'];
+  const head = ['البيت', 'الصدر', 'العجز', 'القائل', 'سنة الوفاة', 'العصر',
+    'البحر', 'الغرض', 'المناسبة', 'القافية', 'شرح الغريب', 'الرواية الأخرى',
+    'مواضعه', 'اختُلف في نسبته', 'سبب الموافقة',
+    'الكتاب', 'المؤلف', 'الصفحة', 'الرابط', 'ملاحظتك', 'وسومك'];
   const cell = (t) => `"${String(t ?? '').replace(/"/g, '""')}"`;
   const lines = [head.map(cell).join(',')];
   for (const v of items) {
     const { sadr, ajz } = hemistichs(v);
     const s = v.source ?? {};
     lines.push([v.text, sadr, ajz, v.poet ?? '', v.deathYear ?? '', v.era?.name ?? '',
+      v.meter ?? '', v.purpose ?? '', v.occasion ?? '',
+      rhymeLabel(v), (v.glosses ?? []).map((g) => `${g.word}: ${g.gloss}`).join(' · '),
+      v.variant ?? '', v.occurrences ?? 1, (v.disputedPoets ?? []).join('، '), v.why?.label ?? '',
       s.bookName ?? '', s.bookAuthor ?? '', s.printedPage ?? '', s.url ?? '',
       v.note ?? '', (v.tags ?? []).join(' · ')].map(cell).join(','));
   }

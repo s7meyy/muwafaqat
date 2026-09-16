@@ -26,6 +26,7 @@ import { diffTranscripts, disagreementCount, agreementRatio, proposedText } from
 import { countLabel, VERSE, PAGE, MATCHED_VERSE } from '../core/plural.js';
 import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
+import { looksArabic, inputKind } from '../core/input.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1228,6 +1229,51 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   // ★ ولا يُختلق شعرٌ من نثر ★
   const prose = 'وقال المؤلف رحمه الله تعالى\nوهذا باب في ذكر الأحكام\nوفيه مسائل كثيرة جدا\nثم قال بعد ذلك';
   eq('والنثرُ لا يُقرأ شعرًا', extractVerses(prose).length, 0);
+}
+
+// ── مدخلُ الباحث: كلمةٌ أم بيتٌ أم نثر؟ ───────────────────────────────────
+{
+  ok('★ «الدهر» نصٌّ عربيٌّ يُبحث به', looksArabic('الدهر'),
+     'كان شرطُ الكلمتين يردّه برسالة «هذا لا يبدو بيتًا عربيًّا» — وهي كاذبة، '
+     + 'والباحثُ في الصور الشعرية أوّلُ ما يبحث بكلمة');
+  ok('و«الشيب» كذلك', looksArabic('الشيب'));
+  ok('و«hello» ليس عربيًّا', !looksArabic('hello'));
+  ok('وحرفٌ واحدٌ لا يُبحث به', !looksArabic('أ'));
+
+  eq('★ والكلمةُ تُعرف كلمةً', inputKind('الدهر'), 'word');
+  eq('والبيتُ بيتًا', inputKind('وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا'), 'verse');
+  eq('★ والفقرةُ المرسلة نثرًا', inputKind(
+    'هذا كلامٌ نثريٌّ طويلٌ لا شعر فيه البتة وإنما أردت أن أرى ماذا يقول الموقع لمن لصق فقرةً من كتاب فيها كلام'), 'prose',
+     'لُصقت فقرةٌ فقال «بيتان موافقان» — فالأداة تميّز الشعر في مخرجها ولا تميّزه في مدخلها');
+  eq('والشطران في سطرين بيت', inputKind('ألا كل شيء ما خلا الله باطل\nوكل نعيم لا محالة زائل'), 'verse');
+}
+
+// ── التصدير يحمل ما يُعرض ────────────────────────────────────────────────
+{
+  const v = {
+    text: 'طوته المنايا فوق جرداء شطبة ... تدف دفيف الرائح المتمطر',
+    poet: 'لبيد بن ربيعة', deathYear: 41, meter: 'الطويل', purpose: 'رثاء',
+    occasion: 'يرثي أخاه أربد', variant: 'بغير', doubted: true, occurrences: 3,
+    alsoIn: ['خزانة الأدب'], disputedPoets: ['لبيد', 'النابغة'],
+    why: { label: 'شارك بيتك في: المنايا' },
+    glosses: [{ word: 'شطبة', gloss: 'الفرس الطويلة' }],
+    source: { bookName: 'ديوان لبيد', bookAuthor: 'لبيد', printedPage: '45' },
+  };
+  const doc = researchHtml([v]);
+  ok('★ الملفّ يحمل البحرَ والغرض', /البحر: الطويل/.test(doc) && /الغرض: رثاء/.test(doc),
+     'كان الباحث يرى على الشاشة ما لا يجده في ملفّه — وهو الملفّ الذي يدخل بحثه');
+  ok('وشرحَ الغريب', /شطبة: الفرس الطويلة/.test(doc));
+  ok('والروايةَ الأخرى', /وفي روايةٍ: بغير/.test(doc));
+  ok('وشكَّ المحقّق', /بين معقوفتين/.test(doc));
+  ok('والخلافَ في النسبة', /اختُلف في نسبته/.test(doc));
+  ok('وسببَ الموافقة', /سببُ الموافقة/.test(doc));
+  ok('★ وجمعُ المواضع صحيح', /ورد في ٣ مواضع/.test(doc), '«٣ موضعًا» كسرٌ ظاهر');
+
+  const table = csv([v]);
+  const head = table.split('\n')[0];
+  for (const col of ['البحر', 'الغرض', 'القافية', 'شرح الغريب', 'الرواية الأخرى', 'سبب الموافقة']) {
+    ok(`وعمودُ «${col}» في الجدول`, head.includes(col));
+  }
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

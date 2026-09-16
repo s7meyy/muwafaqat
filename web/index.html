@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+<a class="skip" href="#results">تخطَّ إلى الأبيات الموافقة</a>
 <header class="top">
   <h1>الموافقات</h1>
   <p class="sub">أدخِل بيتًا — تخرج أبياتٌ توافقه في المعنى، كلٌّ بقائله وعصره ومصدره.</p>
@@ -37,6 +38,7 @@
          aria-label="اختر صورةً أو أفلتها هنا">
       <p class="drop-title">أفلِت صورة الصفحة هنا</p>
       <p class="drop-sub">أو اضغط لاختيارها من جهازك · JPG أو PNG</p>
+      <label class="visually-hidden" for="file">صورةُ الصفحة أو البيت</label>
       <input type="file" id="file" accept="image/*" hidden>
     </div>
 
@@ -144,7 +146,8 @@
   <p id="scope-note" class="scope-note" aria-live="polite"></p>
   <p id="filter-note" aria-live="polite"></p>
   <p id="ranking-note" class="ranking-note" aria-live="polite"></p>
-  <section id="results" class="results" aria-label="الأبيات الموافقة"></section>
+  <h2 id="results-head" class="results-head" hidden>الأبياتُ الموافقة</h2>
+  <section id="results" class="results" aria-labelledby="results-head" tabindex="-1"></section>
 </main>
 
 <footer class="foot">
