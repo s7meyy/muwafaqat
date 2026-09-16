@@ -12,6 +12,7 @@ import readline from 'node:readline';
 import { buildIndex, shardName } from '../core/verse-index.js';
 import { detectRegister } from '../core/register.js';
 import { toArabicDigits } from '../core/normalize.js';
+import { countLabel, SHARD, VERSE } from '../core/plural.js';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) => {
   if (a.startsWith('--')) acc.push([a.slice(2), arr[i + 1]?.startsWith('--') ? true : arr[i + 1]]);
@@ -20,6 +21,8 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
 
 const IN = args.in ?? 'index/verses.jsonl';
 const OUT = args.out ?? 'web/index';
+// جيرانُ المعنى — إن وُجد ملفُّها ضُمَّت إلى الفهرس، وإلّا بُني لفظيًّا وقيل ذلك
+const NEIGHBORS = args.neighbors ?? 'index/neighbors.jsonl';
 
 async function readVerses(file) {
   const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
@@ -53,8 +56,23 @@ function writeShards(dir, map) {
   return { bytes, count: sizes.length, median: at(0.5), p95: at(0.95), max: sizes[sizes.length - 1] ?? 0 };
 }
 
+/** جيرانُ المعنى كما كتبها tools/neighbors.js — مفاتيحُها نصوصٌ مطبَّعة. */
+function readNeighbors(file) {
+  if (!fs.existsSync(file)) return null;
+  const map = new Map();
+  for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const { key, neighbors } = JSON.parse(line);
+      if (key && neighbors?.length) map.set(key, neighbors);
+    } catch { /* سطرٌ معطوب يُتخطّى */ }
+  }
+  return map.size ? map : null;
+}
+
 const verses = await readVerses(IN);
-const built = buildIndex(verses);
+const neighbors = readNeighbors(NEIGHBORS);
+const built = buildIndex(verses, { neighbors });
 
 fs.mkdirSync(OUT, { recursive: true });
 const tok = writeShards(path.join(OUT, 't'), built.tokens);
@@ -88,9 +106,9 @@ fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify({
 const mb = (n) => (n / 1048576).toFixed(1);
 const peak = process.memoryUsage().rss;
 process.stdout.write(
-  `فُهرس ${toArabicDigits(String(built.meta.verses))} بيتًا من ${toArabicDigits(String(verses.length))} مستخرَجًا\n`
-  + `الكلمات: ${toArabicDigits(String(built.tokens.size))} شظيّة (${toArabicDigits(mb(tokenBytes))} م.ب)\n`
-  + `السجلّات: ${toArabicDigits(String(built.store.size))} شظيّة (${toArabicDigits(mb(verseBytes))} م.ب)\n`
+  `فُهرس ${countLabel(built.meta.verses, VERSE)} من ${toArabicDigits(String(verses.length))} مستخرَجًا\n`
+  + `الكلمات: ${countLabel(built.tokens.size, SHARD)} (${toArabicDigits(mb(tokenBytes))} م.ب)\n`
+  + `السجلّات: ${countLabel(built.store.size, SHARD)} (${toArabicDigits(mb(verseBytes))} م.ب)\n`
   + `المتصفّح ينزّل في البحث الواحد: ${toArabicDigits(String(Math.round(perQuery.typical / 1024)))} ك.ب للسؤال المعتاد،`
   + ` و${toArabicDigits(String(Math.round(perQuery.heavy / 1024)))} ك.ب إن وقعت فيه كلمةٌ مطروقة\n`
   + `أكبر شظيّة: كلمات ${toArabicDigits((tok.max / 1024).toFixed(0))} ك.ب · سجلّات ${toArabicDigits((ver.max / 1024).toFixed(0))} ك.ب\n`
@@ -99,5 +117,10 @@ process.stdout.write(
       + `${toArabicDigits(String(built.meta.maxPostings))} موضعًا: ${built.meta.cappedTokens.slice(0, 8).join('، ')}`
       + `${built.meta.cappedTokens.length > 8 ? '…' : ''}\n`
     : '')
+  + (built.meta.semantic
+    ? `بالمعنى: ${toArabicDigits(String(built.meta.withNeighbors))} بيتًا له جيرةٌ محسوبة — `
+      + `فالبحث بالمعنى يعمل بلا مفتاحٍ ولا شبكة\n`
+    : `★ بلا جيرانِ معنًى — الفهرس لفظيٌّ وحده. شغّل tools/neighbors.js ليجد الموقعُ `
+      + `«بقدر الكدّ تكتسب المعالي» لمن سأل بـ«وما نيل المطالب بالتمنّي»\n`)
   + `الذاكرة المستعملة: ${toArabicDigits(mb(peak))} م.ب\n`
   + `← ${OUT}\n`);

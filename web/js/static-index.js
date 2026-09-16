@@ -4,7 +4,7 @@
 // لا خادم ولا قاعدة: ملفاتٌ ساكنةٌ تُجلب عند الحاجة، وتُحفظ في الذاكرة لئلّا
 // تُجلب مرّتين. والمتصفّح لا ينزّل الفهرس كله — شظايا كلمات بحثه وحدها.
 
-import { searchIndex, shardName } from '../../core/verse-index.js';
+import { searchIndex, shardName, neighborsOf } from '../../core/verse-index.js';
 
 const BASE = 'index';
 const cache = new Map();
@@ -59,4 +59,28 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
     indexMeta: { verses: meta.verses, builtAt: meta.builtAt },
     scanned,
   };
+}
+
+/**
+ * موافقاتُ المعنى — محسوبةٌ يوم الفهرسة، فتأتي بلا نموذجٍ ولا مفتاحٍ ولا انتظار.
+ *
+ * ★ وهي الجواب عن الحدّ الذي يقف عنده البحث اللفظيّ: ★ «وما نيل المطالب
+ * بالتمنّي» و«بقدر الكدّ تكتسب المعالي» لا تشترك بينهما كلمة. فلا يجمعهما
+ * لفظٌ أبدًا، ويجمعهما المعنى إن كان الفهرس مبنيًّا به.
+ *
+ * وتُرجع [] إن لم يكن للفهرس جيرة، أو لم يُعرف بيتُ السائل فيه — ولا تُختلق.
+ */
+export async function semanticMatches(verse, { limit = 12 } = {}) {
+  const meta = await indexMeta();
+  if (!meta?.semantic) return [];
+  const { verses } = await neighborsOf(verse, loadShard, {
+    limit, tokenShards: meta.tokenShards, verseShards: meta.verseShards,
+  });
+  return verses.map((v) => ({
+    ...v,
+    evidence: { documentId: `index:${v.source.bookId}:${v.source.pageId}`, matched: 'index' },
+    matchedQueries: ['موافقةٌ في المعنى'],
+    semantic: true,
+    occurrences: v.occurrences ?? 1,
+  }));
 }

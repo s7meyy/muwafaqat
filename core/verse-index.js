@@ -166,6 +166,8 @@ export function fromRecord(rec) {
     register: rec.r ? 'nabati' : 'fasih',
     // ★ ورودُ البيت في كتبٍ عدّة خبرٌ عنه لا تكرارٌ يُطرح. ★
     occurrences: rec.n ?? 1,
+    // أرقامُ الأبيات الموافقة في المعنى، محسوبةً يوم الفهرسة
+    neighborIds: rec.m?.map(([id, sim]) => ({ id, sim: sim / 100 })) ?? null,
     // ★ ولا يُرجَّح عند الاختلاف: يُعرض القولان. ★
     disputedPoets: rec.x?.length ? [rec.p, ...rec.x].filter(Boolean) : null,
     alsoIn: rec.y ?? null,
@@ -217,6 +219,8 @@ function mergeOccurrence(rec, v) {
  * يُرجع { meta, tokens: Map<bucket, {token: [ids]}>, verses: Map<bucket, {id: record}> }
  */
 export function buildIndex(verses, opts = {}) {
+  // جيرانُ المعنى محسوبةٌ سلفًا: Map<نصّ البيت المطبَّع, [{ text, sim }]>
+  const neighbors = opts.neighbors ?? null;
   const n = verses.length;
   const verseShards = opts.verseShards ?? fitShards(n, PER_VERSE_SHARD, VERSE_SHARDS);
   const tokenShards = opts.tokenShards ?? fitShards(n, PER_TOKEN_SHARD, TOKEN_SHARDS);
@@ -261,9 +265,25 @@ export function buildIndex(verses, opts = {}) {
     }
   }
 
+  // ★ الجيرة تُكتب بأرقام السجلّات لا بنصوصها ★ — والأرقام لا تُعرف إلا بعد
+  //   المرور على الأبيات كلها، فتُملأ الآن.
+  let withNeighbors = 0;
+  if (neighbors) {
+    const idOf = new Map();
+    for (const [key, rec] of seen) idOf.set(key, rec.i);
+    for (const [key, rec] of seen) {
+      const list = (neighbors.get(key) ?? [])
+        .map((nb) => [idOf.get(normalize(nb.text)), Math.round(nb.sim * 100)])
+        .filter(([nid]) => nid && nid !== rec.i);
+      if (list.length) { rec.m = list; withNeighbors++; }
+    }
+  }
+
   return {
     meta: {
       version: INDEX_VERSION, verses: id, builtAt: new Date().toISOString(),
+      // ★ يُقال في الفهرس أبُني بالمعنى أم باللفظ وحده ★ — فالموقع يُخبر به قارئه
+      semantic: Boolean(neighbors), withNeighbors,
       tokenShards, verseShards,
       maxPostings: MAX_POSTINGS,
       // كلماتٌ بلغت الحدّ فقُصَّت قوائمُها — بحثٌ بها وحدها لا يستوعب كلَّ ما في الفهرس
@@ -376,6 +396,51 @@ export async function searchIndex(query, load, {
   }
 
   return { verses: out, terms, scanned: candidates.length };
+}
+
+/**
+ * موافقاتُ المعنى للبيت الذي سأل به السائل.
+ *
+ * ★ وهي الجواب عن العلّة التي لا يُصلحها بحثُ الألفاظ: ★ «وما نيل المطالب
+ * بالتمنّي» و«بقدر الكدّ تكتسب المعالي» لا تشترك بينهما كلمة، فلا يجمعهما
+ * فهرسٌ لفظيٌّ أبدًا. وجيرانُ المعنى محسوبةٌ يوم الفهرسة، فتأتي هنا ★ بلا
+ * نموذجٍ ولا مفتاحٍ ولا شبكة ★ — وهذا ما يجعل الموقع يملك معناه لا يستعيره.
+ *
+ * والمدخل: أن يُعرف بيتُ السائل في الفهرس. فإن لم يُعرف فلا جيرةَ له، ويبقى
+ * المجلسُ والبحثُ اللفظيّ.
+ */
+export async function neighborsOf(query, load, {
+  limit = 12, verseShards = VERSE_SHARDS, tokenShards = TOKEN_SHARDS, minSimilarity = 0,
+} = {}) {
+  // (١) أين بيتُ السائل من الفهرس؟ نبحث به ولا نستبعده — فهو المطلوب نفسه
+  const { verses } = await searchIndex(query, load, {
+    limit: 5, excludeVerse: null, tokenShards, verseShards,
+  });
+  const fp = fingerprint(query);
+  const self = verses.find((v) => {
+    const f = fingerprint(v.text);
+    const [a, b] = f.length >= fp.length ? [f, fp] : [fp, f];
+    return f === fp || (b.length >= 12 && a.includes(b));
+  });
+  if (!self?.neighborIds?.length) return { verses: [], anchor: self ?? null };
+
+  // (٢) الجيران أرقامٌ في شظايا السجلّات — تُجلب دفعةً واحدة
+  const wanted = self.neighborIds.filter((n) => n.sim >= minSimilarity).slice(0, limit);
+  const buckets = new Map();
+  for (const n of wanted) {
+    const b = verseBucketOf(n.id, verseShards);
+    if (!buckets.has(b)) buckets.set(b, load('verses', b));
+  }
+  const stores = new Map();
+  for (const [b, p] of buckets) stores.set(b, await p);
+
+  const out = [];
+  for (const n of wanted) {
+    const rec = stores.get(verseBucketOf(n.id, verseShards))?.[n.id];
+    if (!rec) continue;
+    out.push({ ...fromRecord(rec), similarity: n.sim, basis: 'neighbors' });
+  }
+  return { verses: out, anchor: self };
 }
 
 /** أتقع كلماتُ البحث متقاربةً في البيت؟ */

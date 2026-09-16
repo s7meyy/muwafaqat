@@ -48,3 +48,11 @@ export const DIFFERENCE = {
   zero: 'لا اختلاف', one: 'موضعُ اختلافٍ واحد', two: 'موضعا اختلاف',
   few: '# مواضع اختلاف', many: '# موضع اختلاف', other: '# موضع اختلاف',
 };
+export const SHARD = {
+  zero: 'بلا شظيّة', one: 'شظيّةٌ واحدة', two: 'شظيّتان',
+  few: '# شظايا', many: '# شظيّة', other: '# شظيّة',
+};
+export const BOOK = {
+  zero: 'لا كتاب', one: 'كتابٌ واحد', two: 'كتابان',
+  few: '# كتب', many: '# كتابًا', other: '# كتاب',
+};

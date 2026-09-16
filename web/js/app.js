@@ -13,7 +13,7 @@ import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ } from '../../core/plural.js';
 import { splitVerses, looksArabic } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
-import { searchStatic } from './static-index.js';
+import { searchStatic, semanticMatches } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
 
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
@@ -132,6 +132,10 @@ function card(v) {
   const nabati = v.register === 'nabati'
     ? `<span class="badge t-nabati">نبطي${v.registerConfidence < 0.6 ? ' (ترجيح)' : ''}</span>` : '';
   // ★ البيت المدوَّر ليس نصًّا معطوبًا — يُقال للقارئ ما هو ★
+  // ★ موافقةٌ في المعنى: يُقال للقارئ لِمَ ظهر هذا البيت وليس فيه كلمةٌ من بيته ★
+  const bySense = v.semantic
+    ? `<span class="badge t-sense" title="متجهُ المعنى قرّب البيتين، وقد حُسب يوم الفهرسة">موافقةٌ في المعنى${
+        v.similarity ? ` (${ar(String(Math.round(v.similarity * 100)))}٪)` : ''}</span>` : '';
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
 
@@ -159,7 +163,7 @@ function card(v) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${esc(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
-      ${nabati}${mudawwar}${agreed}
+      ${nabati}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
     ${alsoIn}${disputed}${caveat}${pairing}${dated}${via}
@@ -397,11 +401,18 @@ async function search() {
     anyWeb ??= data.web ?? null;
     lastRanking = data.ranking ?? lastRanking;
 
-    for (const v of data.verses ?? []) {
+    // ★ موافقاتُ المعنى تُضمّ مهما كان طريقُ البحث ★ — فالجسر يبحث في الشاملة
+    //   باللفظ، والجيرةُ محسوبةٌ في الفهرس بالمعنى، وهما لا يتعارضان.
+    let semantic = [];
+    try { semantic = await semanticMatches(verse); } catch { /* لا جيرةَ منشورة */ }
+
+    for (const v of [...(data.verses ?? []), ...semantic]) {
       if (rejected.has(v.text)) continue;              // ما قال عنه «ليس موافقًا»
       const prev = merged.get(v.text);
       if (prev) {
         prev.matchedQueries = [...new Set([...(prev.matchedQueries ?? []), ...(v.matchedQueries ?? [])])];
+        // ما بلغه اللفظُ والمعنى معًا أوثقُ موافقةً، فيُحفظ وسمُ المعنى فيه
+        if (v.semantic) { prev.semantic = true; prev.similarity ??= v.similarity; }
       } else merged.set(v.text, v);
     }
   }

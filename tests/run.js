@@ -37,7 +37,8 @@ import { detectTadweer } from '../core/verses.js';
 import { queryGroups } from '../core/verse-index.js';
 import { rankBySimilarity, rankingNote, lexicalSimilarity, cosine, documentFrequencies } from '../core/semantic.js';
 import { buildIndex, searchIndex, indexTokens, bucketOf, verseBucketOf,
-  TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord } from '../core/verse-index.js';
+  TOKEN_SHARDS, VERSE_SHARDS, withinProximity, fromRecord, toRecord, neighborsOf } from '../core/verse-index.js';
+import { buildNeighbors, kmeans, unit, dot } from '../core/neighbors.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const page = JSON.parse(fs.readFileSync(path.join(here, 'fixtures/maani-66.json'), 'utf8'));
@@ -904,6 +905,94 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   const review = needsReview([good, silent, empty]);
   eq('والمراجعةُ تُرتَّب بالأكثر أبياتًا', review[0].bookName, 'أعيان العصر');
   eq('ولا يدخلها السليم', review.length, 2);
+}
+
+// ── جيرانُ المعنى ─────────────────────────────────────────────────────────
+// ★ العلّة التي لا يُصلحها بحثُ الألفاظ، والجواب عنها. ★
+{
+  // متجهاتٌ مصنوعةٌ لا مُتعلَّمة: ثلاثةُ معانٍ متباعدة، كلٌّ في جهة.
+  // (الاختبار يقيس البناءَ والبحث، لا جودةَ نموذجٍ لا يُشغَّل هنا.)
+  const V = {
+    saee1:  [0.95, 0.05, 0.0],   // السعي والكدّ
+    saee2:  [0.90, 0.10, 0.0],
+    saee3:  [0.88, 0.14, 0.0],
+    sabr1:  [0.05, 0.95, 0.0],   // الصبر
+    sabr2:  [0.10, 0.92, 0.0],
+    ghazal: [0.0, 0.05, 0.98],   // الغزل
+  };
+  const text = {
+    saee1: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا',
+    saee2: 'بقدر الكد تكتسب المعالي ... ومن طلب العلا سهر الليالي',
+    saee3: 'ومن يتهيب صعود الجبال ... يعش أبد الدهر بين الحفر',
+    sabr1: 'تعز فإن الصبر بالحر أجمل ... وليس على ريب الزمان معول',
+    sabr2: 'وللصبر عاقبة محمودة ... إذا اشتد بالمرء ما يكره',
+    ghazal: 'قفا نبك من ذكرى حبيب ومنزل ... بسقط اللوى بين الدخول فحومل',
+  };
+  const keys = Object.keys(V);
+  const items = keys.map((k) => ({ id: k, vector: V[k] }));
+
+  ok('★ ولا تشترك «التمنّي» و«الكدّ» في كلمة',
+    !normalize(text.saee1).split(' ').some((w) => normalize(text.saee2).split(' ').includes(w) && w.length > 2),
+    'وهذا هو الحدّ الذي يقف عنده كلُّ بحثٍ لفظيّ مهما حُسّن');
+
+  const nb = buildNeighbors(items, { clusters: 2, topK: 5 });
+  const forSaee = (nb.get('saee1') ?? []).map((n) => n.id);
+  ok('★ فيجمعهما جارُ المعنى', forSaee.includes('saee2'),
+    'المتجه يقرّب المعنيين وإن تباعد اللفظان — وهذا أصلُ الموقع');
+  ok('ويجمع الثالث معهما', forSaee.includes('saee3'));
+  ok('★ ولا يخلط الغزلَ بالسعي', !forSaee.includes('ghazal'),
+    'الجيرةُ بلا حدٍّ أدنى تُخرج كلَّ شيءٍ جارًا لكل شيء');
+  ok('ولا الصبرَ', !forSaee.includes('sabr1'));
+  ok('والبيت ليس جارَ نفسه', !forSaee.includes('saee1'));
+
+  eq('والترتيب بالأقرب', nb.get('saee1')[0].id, 'saee2');
+  ok('والتشابه مذكورٌ مع كل جار', nb.get('saee1')[0].sim > 0.9);
+
+  // البناء ثابتٌ بين تشغيلين — فالفهرس يُعاد بناؤه فيُطابق
+  const again = buildNeighbors(items, { clusters: 2, topK: 5 });
+  eq('★ وبناءُ الفهرس مُعادٌ للتحقّق', JSON.stringify([...again.get('saee1')]), JSON.stringify([...nb.get('saee1')]));
+
+  eq('والتطبيع يجعل الطول واحدًا', Math.round(dot(unit([3, 4, 0]), unit([3, 4, 0])) * 1000), 1000);
+  eq('والعناقيد لا تزيد على الأبيات', kmeans(items.map((i) => unit(i.vector)), 99).centroids.length, 6);
+}
+
+// جيرانُ المعنى في الفهرس الساكن — من السؤال إلى الجواب بلا نموذج
+{
+  const texts = {
+    a: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا',
+    b: 'بقدر الكد تكتسب المعالي ... ومن طلب العلا سهر الليالي',
+    c: 'قفا نبك من ذكرى حبيب ومنزل ... بسقط اللوى بين الدخول فحومل',
+  };
+  const verses = [
+    { text: texts.a, poet: 'شوقي', deathYear: 1351, source: { bookName: 'علم المعاني', bookId: 1, pageId: 2 } },
+    { text: texts.b, poet: 'المتنبي', deathYear: 354, source: { bookName: 'ديوان المتنبي', bookId: 2, pageId: 3 } },
+    { text: texts.c, poet: 'امرؤ القيس', deathYear: -80, source: { bookName: 'ديوان امرئ القيس', bookId: 3, pageId: 4 } },
+  ];
+  const neighbors = new Map([
+    [normalize(texts.a), [{ text: texts.b, sim: 0.88 }]],
+    [normalize(texts.b), [{ text: texts.a, sim: 0.88 }]],
+  ]);
+  const ix = buildIndex(verses, { neighbors });
+  ok('★ ويُعلن الفهرس أنه مبنيٌّ بالمعنى', ix.meta.semantic === true,
+    'فالموقع يقول لقارئه على أيّ أساسٍ رُتِّب، ولا يوهمه معنًى وهو لفظ');
+  eq('وكم بيتًا له جيرة', ix.meta.withNeighbors, 2);
+
+  const load = async (kind, bucket) => (kind === 'tokens' ? ix.tokens.get(bucket) : ix.store.get(bucket)) ?? {};
+  const opts = { tokenShards: ix.meta.tokenShards, verseShards: ix.meta.verseShards };
+
+  const lexical = await searchIndex(texts.a, load, { ...opts, excludeVerse: texts.a });
+  ok('★ البحث اللفظيّ لا يجد الموافق في المعنى', !lexical.verses.some((v) => v.text === texts.b),
+    'لا كلمةَ مشتركة، فلا سبيل للّفظ إليه — وهذا ليس عيبًا في التنفيذ بل حدٌّ للطريقة');
+
+  const found = await neighborsOf(texts.a, load, opts);
+  eq('★ وجارُ المعنى يجده بلا نموذجٍ ولا شبكة', found.verses[0]?.text, texts.b,
+    'محسوبٌ يوم الفهرسة، فيأتي مجّانًا وفوريًّا لمن لا مفتاح له');
+  eq('ومعه قائلُه وعصره', found.verses[0]?.poet, 'المتنبي');
+  eq('ودرجةُ قربه مذكورة', found.verses[0]?.similarity, 0.88);
+  eq('ولا يُخلط الغزل', found.verses.length, 1);
+
+  const none = await neighborsOf('بيتٌ ليس في الفهرس أصلًا وليس فيه شيء', load, opts);
+  eq('★ وما ليس في الفهرس لا جيرةَ له، ولا تُختلق له', none.verses.length, 0);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
