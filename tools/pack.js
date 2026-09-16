@@ -39,40 +39,63 @@ async function readVerses(file) {
 function writeShards(dir, map) {
   fs.mkdirSync(dir, { recursive: true });
   let bytes = 0;
+  const sizes = [];
   for (const [bucket, data] of map) {
     const file = path.join(dir, `${shardName(bucket)}.json`);
     const json = JSON.stringify(data);
     fs.writeFileSync(file, json);
-    bytes += Buffer.byteLength(json);
+    const n = Buffer.byteLength(json);
+    bytes += n;
+    sizes.push(n);
   }
-  return bytes;
+  sizes.sort((a, b) => a - b);
+  const at = (q) => sizes[Math.min(sizes.length - 1, Math.floor(sizes.length * q))] ?? 0;
+  return { bytes, count: sizes.length, median: at(0.5), p95: at(0.95), max: sizes[sizes.length - 1] ?? 0 };
 }
 
 const verses = await readVerses(IN);
 const built = buildIndex(verses);
 
 fs.mkdirSync(OUT, { recursive: true });
-const tokenBytes = writeShards(path.join(OUT, 't'), built.tokens);
-const verseBytes = writeShards(path.join(OUT, 'v'), built.store);
-const perQuery = estimatePerQuery(built, tokenBytes, verseBytes);
+const tok = writeShards(path.join(OUT, 't'), built.tokens);
+const ver = writeShards(path.join(OUT, 'v'), built.store);
+const tokenBytes = tok.bytes, verseBytes = ver.bytes;
+// ★ كم يُنزّل المتصفّح في البحث الواحد؟ ★
+//
+// كان يُحسب بمتوسّط حجم الشظيّة — فأخطأ عشرين ضعفًا. والعلّة أن التوزيع شديد
+// الميل: الكلمة الشائعة تُراكم قائمةَ مواضعَ ضخمة، فتنتفخ شظيّتُها وحدها،
+// والمتوسّطُ لا يراها. فالتقدير الآن على ★ الشظيّة الكبيرة (٩٥٪) ★ لا على
+// المتوسّط — وهو ما يلقاه المستخدم حين تقع في سؤاله كلمةٌ مطروقة.
+// ★ العدد ٤٠ لا ٢٠: ★ البحث يجلب شظيّةَ سجلٍّ لكل مرشَّح، والمرشَّحون
+// `limit * 2` = أربعون (انظر searchIndex). وحسبُهم عشرين كان يُنقص الرقم
+// المعلَن إلى نصف ما يلقاه المستخدم فعلًا.
+const CANDIDATE_SHARDS = 40;
+const perQuery = {
+  typical: Math.round(tok.median * 3 + ver.median * CANDIDATE_SHARDS),
+  heavy: Math.round(tok.max + tok.p95 * 2 + ver.p95 * CANDIDATE_SHARDS),
+};
 fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify({
   ...built.meta,
-  filesWritten: { tokens: built.tokens.size, verses: built.store.size },
+  filesWritten: { tokens: tok.count, verses: ver.count },
   bytes: { tokens: tokenBytes, verses: verseBytes },
-  estimatedPerQueryBytes: perQuery,
+  shardSizes: {
+    tokens: { median: tok.median, p95: tok.p95, max: tok.max },
+    verses: { median: ver.median, p95: ver.p95, max: ver.max },
+  },
+  perQueryBytes: perQuery,
 }, null, 2));
-
-/** كم يُنزّل المتصفّح في البحث الواحد؟ الرقم الذي يهمّ المستخدم فعلًا. */
-function estimatePerQuery(built, tokenBytes, verseBytes) {
-  const avgToken = built.tokens.size ? tokenBytes / built.tokens.size : 0;
-  const avgVerse = built.store.size ? verseBytes / built.store.size : 0;
-  return Math.round(avgToken * 3 + avgVerse * 20);   // ٣ كلماتٍ و٢٠ مرشَّحًا
-}
 
 const mb = (n) => (n / 1048576).toFixed(1);
 process.stdout.write(
   `فُهرس ${toArabicDigits(String(built.meta.verses))} بيتًا من ${toArabicDigits(String(verses.length))} مستخرَجًا\n`
   + `الكلمات: ${toArabicDigits(String(built.tokens.size))} شظيّة (${toArabicDigits(mb(tokenBytes))} م.ب)\n`
   + `السجلّات: ${toArabicDigits(String(built.store.size))} شظيّة (${toArabicDigits(mb(verseBytes))} م.ب)\n`
-  + `المتصفّح ينزّل في البحث الواحد نحو ${toArabicDigits(String(Math.round(perQuery / 1024)))} ك.ب\n`
+  + `المتصفّح ينزّل في البحث الواحد: ${toArabicDigits(String(Math.round(perQuery.typical / 1024)))} ك.ب للسؤال المعتاد،`
+  + ` و${toArabicDigits(String(Math.round(perQuery.heavy / 1024)))} ك.ب إن وقعت فيه كلمةٌ مطروقة\n`
+  + `أكبر شظيّة: كلمات ${toArabicDigits((tok.max / 1024).toFixed(0))} ك.ب · سجلّات ${toArabicDigits((ver.max / 1024).toFixed(0))} ك.ب\n`
+  + (built.meta.cappedTokens?.length
+    ? `★ ${toArabicDigits(String(built.meta.cappedTokens.length))} كلمةً مطروقةً قُصَّت قوائمُها عند `
+      + `${toArabicDigits(String(built.meta.maxPostings))} موضعًا: ${built.meta.cappedTokens.slice(0, 8).join('، ')}`
+      + `${built.meta.cappedTokens.length > 8 ? '…' : ''}\n`
+    : '')
   + `← ${OUT}\n`);

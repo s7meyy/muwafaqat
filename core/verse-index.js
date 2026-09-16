@@ -37,6 +37,16 @@ const NOT_INDEXED = new Set([
 
 const MIN_TOKEN = 3;
 
+// ★ حدٌّ لقائمة مواضع الكلمة. ★
+//
+// الكلمة المطروقة تُراكم عشرات الألوف من المواضع، فتنتفخ شظيّتُها وحدها حتى
+// تبلغ الميغابايت — وقياسٌ على مئتَي ألف بيتٍ أخرج شظيّةً واحدةً بـ١٫٢ م.ب،
+// ينزّلها المتصفّح كاملةً لأن كلمةً مطروقةً وقعت في السؤال.
+//
+// وهي لا تميّز شيئًا أصلًا: كلمةٌ في خُمس الأبيات لا تدلّ على موافقة. فنُبقي
+// منها قدرًا يكفي للترشيح، ★ ونعلم أنها قُصّت ★ فيُقال في البيانات لا يُكتم.
+const MAX_POSTINGS = 3000;
+
 // سوابقُ العربية الملتصقة. «بالتمني» و«التمني» و«تمنّي» كلمةٌ واحدةٌ في البحث،
 // وبحثُ الشاملة يجرّدها بالتحليل الصرفي — والفهرس الساكن لا محلّل معه.
 // ★ فنفهرس الصورة كما وردت ومجرّدةً معًا، ونجرّد كلمة البحث كذلك، فيلتقيان. ★
@@ -148,6 +158,7 @@ export function fromRecord(rec) {
 export function buildIndex(verses) {
   const tokens = new Map();
   const store = new Map();
+  const capped = new Set();
   let id = 0;
   const seen = new Set();
 
@@ -165,7 +176,9 @@ export function buildIndex(verses) {
       const b = bucketOf(tok);
       if (!tokens.has(b)) tokens.set(b, {});
       const bucket = tokens.get(b);
-      (bucket[tok] ??= []).push(id);
+      const list = (bucket[tok] ??= []);
+      if (list.length < MAX_POSTINGS) list.push(id);
+      else capped.add(tok);
     }
   }
 
@@ -173,6 +186,9 @@ export function buildIndex(verses) {
     meta: {
       version: INDEX_VERSION, verses: id, builtAt: new Date().toISOString(),
       tokenShards: TOKEN_SHARDS, verseShards: VERSE_SHARDS,
+      maxPostings: MAX_POSTINGS,
+      // كلماتٌ بلغت الحدّ فقُصَّت قوائمُها — بحثٌ بها وحدها لا يستوعب كلَّ ما في الفهرس
+      cappedTokens: [...capped].sort(),
     },
     tokens, store,
   };

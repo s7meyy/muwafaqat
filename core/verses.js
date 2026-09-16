@@ -129,16 +129,22 @@ export function extractVerses(pageText) {
       if (!pair) continue;
       const { sadr, ajz } = pair;
 
-      const tadweer = detectTadweer(sadr, ajz);
+      // ★ الأقواس التي تحتضن البيت ليست منه. ★
+      //   كتب الشواهد تضع الشاهد بين قوسين: «(وهل يعمن من كان … أحوال)»
+      //   وقوسُ الفتح كان يبقى في النصّ فيُعرض ويُفسد المطابقة.
+      const trim = (t) => t.replace(/^[\s(\[«"“،]+/, '').replace(/[\s)\]»"”،.]+$/, '').trim();
+      const tadweer = detectTadweer(trim(sadr), trim(ajz));
+      const cleanSadr = trim(sadr);
+      const cleanAjz = trim(ajz);
       out.push({
-        sadr: sadr.trim(),
-        ajz: ajz.trim(),
-        text: `${sadr.trim()} ... ${ajz.trim()}`,
+        sadr: cleanSadr,
+        ajz: cleanAjz,
+        text: `${cleanSadr} ... ${cleanAjz}`,
         // نصٌّ موصولٌ للمطابقة وحدها — والمعروض يبقى كما طُبع
         joined: tadweer ? `${tadweer.joinedSadr} ... ${tadweer.joinedAjz}` : null,
         mudawwar: Boolean(tadweer),
         splitWord: tadweer?.word ?? null,
-        plain: `${stripDiacritics(sadr).trim()} ... ${stripDiacritics(ajz).trim()}`,
+        plain: `${stripDiacritics(cleanSadr).trim()} ... ${stripDiacritics(cleanAjz).trim()}`,
         offset: lineStart + Math.max(0, m.index - sadr.length),
         column: Math.max(0, m.index - sadr.length), // موضع البيت في سطره — ما قبله نثرٌ لا شعر
         lineIndex,
