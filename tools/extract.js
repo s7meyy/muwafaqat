@@ -18,9 +18,11 @@ import { attributeVerses, entrySubject } from '../core/attribution.js';
 import { POETRY_CATEGORIES } from '../bridge/shamela.js';
 import { toArabicDigits } from '../core/normalize.js';
 import { Biography } from '../bridge/biography.js';
+import { bookHealth, healthLine, needsReview } from '../core/health.js';
 
 const args = parseArgs(process.argv.slice(2));
 const OUT = args.out ?? 'index/verses.jsonl';
+const HEALTH = OUT + '.health.json';
 const STATE = OUT + '.state.json';
 const CATEGORIES = (args.categories ?? '').split(',').filter(Boolean).map(Number);
 const PAGES_PER_CALL = 20;
@@ -161,8 +163,12 @@ async function main() {
 
   const incomplete = [];
 
+  // ★ تقريرُ صحّةٍ لكل كتاب — كي لا تمرّ بِنيةٌ مجهولةٌ في صمت. ★
+  const reports = [];
+
   for (const [n, book] of todo.entries()) {
     let bookVerses = 0, bookPages = 0;
+    const sample = [];          // ما يكفي للحكم على الكتاب: النسبة والتأريخ
     readFailed = false;
 
     // ★ موضعُ الكتابة قبل الكتاب — إليه نرجع إن انقطعت قراءته. ★
@@ -198,6 +204,7 @@ async function main() {
             category: book.category ?? book.category_id, pageId: page.page_id, printedPage: page.printed_page,
           },
         }) + '\n');
+        sample.push({ poet: v.poet ?? null, poetSource: v.poetSource ?? null, deathYear: life?.deathYear ?? null });
         bookVerses++;
       }
     }
@@ -225,19 +232,40 @@ async function main() {
     state.pages += bookPages;
     state.incomplete = incomplete.map((b) => b.id);
     saveState(state);
+    if (!broken) {
+      const health = bookHealth({
+        bookId: book.book_id, bookName: book.book_name, pages: bookPages, verses: sample,
+        expectVerses: POETRY_CATEGORIES.includes(Number(book.category_id)),
+      });
+      reports.push(health);
+      fs.writeFileSync(HEALTH, JSON.stringify(reports, null, 1));
+    }
+
     const tries = state.attempts[book.book_id] ?? 0;
     log(`[${toArabicDigits(String(n + 1))}/${toArabicDigits(String(todo.length))}] ${book.book_name} — `
       + (broken
         ? (tries >= MAX_ATTEMPTS
           ? `★ فشل ${toArabicDigits(String(tries))} مرّات، فتُرك`
           : `★ انقطعت قراءته (المحاولة ${toArabicDigits(String(tries))})، وسيُعاد إليه`)
-        : `${toArabicDigits(String(bookVerses))} بيتًا من ${toArabicDigits(String(bookPages))} صفحة`));
+        : healthLine(reports[reports.length - 1])));
   }
 
   sink.end();
   const dated = biography.cache ? [...biography.cache.values()].filter(Boolean).length : 0;
   log(`تمّ. ${toArabicDigits(String(state.verses))} بيتًا من ${toArabicDigits(String(state.pages))} صفحة`
     + ` · عُرفت وفياتُ ${toArabicDigits(String(dated))} شاعرًا ← ${OUT}`);
+
+  // ★ ما يستحقّ نظرةَ عينٍ من صاحب المكتبة ★
+  const review = needsReview(reports);
+  if (review.length) {
+    log('');
+    log(`★ ${toArabicDigits(String(review.length))} كتابًا يستحقّ المراجعة (التفصيل في ${HEALTH}):`);
+    for (const r of review.slice(0, 20)) {
+      log(`   - ${r.bookName} — ${toArabicDigits(String(r.verses))} بيتًا · ${r.flags.map((f) => f.text).join(' · ')}`);
+      const odd = r.oddNames.filter((o) => o.suspect).slice(0, 5);
+      if (odd.length) log(`     أسماءٌ مشكوكٌ فيها: ${odd.map((o) => `«${o.name}»`).join(' · ')}`);
+    }
+  }
 
   if (incomplete.length) {
     log('');

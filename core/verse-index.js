@@ -142,6 +142,8 @@ export function toRecord(verse, id) {
     c: s.category ?? null,
     r: verse.register === 'nabati' ? 1 : 0,
     l: verse.lifespanSource?.label ?? null,   // من أين جاءت سنة الوفاة
+    // n: عددُ الكتب التي ورد فيها · x: أسماءٌ أخرى نُسب إليها · y: كتبٌ أخرى
+    // تُضاف عند التكرار وحده، فلا تزيد حجمَ البيت الذي ورد مرّةً واحدة.
   };
 }
 
@@ -162,6 +164,11 @@ export function fromRecord(rec) {
     era: eraOf(death),
     lifespanSource: rec.l ? { kind: 'index', label: rec.l } : null,
     register: rec.r ? 'nabati' : 'fasih',
+    // ★ ورودُ البيت في كتبٍ عدّة خبرٌ عنه لا تكرارٌ يُطرح. ★
+    occurrences: rec.n ?? 1,
+    // ★ ولا يُرجَّح عند الاختلاف: يُعرض القولان. ★
+    disputedPoets: rec.x?.length ? [rec.p, ...rec.x].filter(Boolean) : null,
+    alsoIn: rec.y ?? null,
     source: {
       kind: 'index',
       trust: 'documented',          // الفهرس مبنيٌّ من كتبٍ محقَّقة
@@ -174,6 +181,35 @@ export function fromRecord(rec) {
       urlNote: 'رابطٌ إلى الشاملة على الشبكة — يقطع بالكتاب ويقارب في الصفحة.',
     },
   };
+}
+
+// أكثرُ ما يُحتفظ به من الكتب الأخرى لبيتٍ واحد — الغرض إظهارُ التعاضد لا سردُ
+// كلّ موضعٍ ورد فيه، وسردُها كلِّها يُضخّم الفهرس بما لا يُقرأ.
+const MAX_ALSO_IN = 4;
+
+/** يضمّ ورودًا آخر للبيت نفسه إلى سجلّه: عددًا، ونسبةً، وكتبًا. */
+function mergeOccurrence(rec, v) {
+  rec.n = (rec.n ?? 1) + 1;
+
+  const poet = v.poet ?? null;
+  if (poet) {
+    if (!rec.p) {
+      // ★ النسبة تُكسَب ولا تُفقَد: ★ كتابٌ سمّى قائله وآخرُ سكت عنه،
+      //   فالمسمِّي أولى — وكان السكوتُ يغلب لأنه سبق.
+      rec.p = poet;
+      rec.d = v.deathYear ?? rec.d;
+      rec.l = v.lifespanSource?.label ?? rec.l;
+    } else if (normalize(poet) !== normalize(rec.p)) {
+      rec.x ??= [];
+      if (!rec.x.some((o) => normalize(o) === normalize(poet))) rec.x.push(poet);
+    }
+  }
+
+  const book = v.source?.bookName;
+  if (book) {
+    rec.y ??= [];
+    if (rec.y.length < MAX_ALSO_IN && book !== rec.b && !rec.y.includes(book)) rec.y.push(book);
+  }
 }
 
 /**
@@ -189,14 +225,28 @@ export function buildIndex(verses, opts = {}) {
   const store = new Map();
   const capped = new Set();
   let id = 0;
-  const seen = new Set();
+  const seen = new Map();   // نصُّ البيت المطبَّع ← سجلُّه، لضمّ ما تكرّر إليه
 
   for (const v of verses) {
     const key = normalize(v.text);
-    if (!key || seen.has(key)) continue;    // المكرَّر لا يُفهرس مرّتين
-    seen.add(key);
+    if (!key) continue;
+
+    // ★ البيت الوارد في كتبٍ عدّة لا يُطرح ثانيه. ★
+    //   كان الفهرس يُبقي أوّل نسخةٍ صادفها ويُهمل ما بعدها — فيُفقد أمران:
+    //   (أ) التعاضد: بيتٌ في «الأغاني» و«خزانة الأدب» و«الحماسة» أوثق من بيتٍ
+    //       في كتابٍ واحد، والقارئ لا يرى ذلك.
+    //   (ب) الخلاف في النسبة: كتابٌ ينسبه لجرير وآخر للفرزدق — فيُعرض قولُ
+    //       الأسبقِ ورودًا وحده كأنه إجماع. وكثيرٌ من الشعر مختلَفٌ في قائله.
+    //   وكان فيه ظلمٌ ثالث: إن ورد أوّلًا في كتابٍ لم يُعرف فيه قائله، ضاعت
+    //   نسبتُه المذكورة في الكتاب الآخر.
+    const prior = seen.get(key);
+    if (prior) {
+      mergeOccurrence(prior, v);
+      continue;
+    }
 
     const rec = toRecord(v, ++id);
+    seen.set(key, rec);
     const vb = verseBucketOf(id, verseShards);
     if (!store.has(vb)) store.set(vb, {});
     store.get(vb)[id] = rec;

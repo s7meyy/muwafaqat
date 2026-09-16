@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { normalize, fingerprint, toArabicDigits, isMostlyArabic } from '../core/normalize.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } from '../core/attribution.js';
+import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
 import { gate } from '../core/verify.js';
 import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
@@ -833,6 +834,76 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   const c = attributeVerses(other, extractVerses(other), { bookName: 'أعيان العصر', carry: a.carry });
   ok('★ فما بدأ بنثرٍ لا يرث', c[0].poet === null,
      'الميراث عبر حدّ الصفحة مشروطٌ بأن يكون أولُ ما فيها بيتًا — وإلا كانت ترجمةً جديدة');
+}
+
+// ── التعاضد والخلاف في النسبة ─────────────────────────────────────────────
+{
+  const sample = [
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل', poet: null,
+      source: { bookName: 'شرح الفارضي', bookId: 174, pageId: 37 } },
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل', poet: 'لبيد', deathYear: 41,
+      source: { bookName: 'خزانة الأدب', bookId: 12, pageId: 9 } },
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل', poet: 'لبيد',
+      source: { bookName: 'الأغاني', bookId: 30, pageId: 4 } },
+    { text: 'تعز فإن الصبر بالحر أجمل ... وليس على ريب الزمان معول', poet: 'أبو تمام',
+      source: { bookName: 'ديوان أبي تمام', bookId: 5, pageId: 2 } },
+    { text: 'تعز فإن الصبر بالحر أجمل ... وليس على ريب الزمان معول', poet: 'البحتري',
+      source: { bookName: 'كتابٌ آخر', bookId: 6, pageId: 3 } },
+  ];
+  const ix = buildIndex(sample);
+  eq('البيتان يُفهرسان مرّةً واحدة', ix.meta.verses, 2);
+
+  const recs = [...ix.store.values()].flatMap((b) => Object.values(b));
+  const lubaid = fromRecord(recs.find((r) => /باطل/.test(r.t)));
+  const disputed = fromRecord(recs.find((r) => /تعز/.test(r.t)));
+
+  eq('★ ورودُ البيت في ثلاثة كتبٍ يُحفظ', lubaid.occurrences, 3,
+     'كان الفهرس يُبقي أوّل نسخةٍ ويطرح ما بعدها، فيضيع التعاضد');
+  eq('★ والنسبة تُكسَب ولا تُفقَد', lubaid.poet, 'لبيد',
+     'الكتاب الأول سكت عن قائله، والثاني سمّاه — وكان السكوتُ يغلب لأنه سبق');
+  eq('ومعها سنةُ وفاته', lubaid.deathYear, 41);
+  ok('ولا خلافَ فيه', lubaid.disputedPoets === null);
+  ok('وتُذكر الكتب الأخرى', lubaid.alsoIn?.includes('خزانة الأدب') && lubaid.alsoIn?.includes('الأغاني'));
+
+  eq('★ واختلافُ الكتب في القائل يُعرض ولا يُرجَّح', disputed.disputedPoets?.length, 2,
+     'كثيرٌ من الشعر مختلَفٌ في نسبته، وعرضُ قولٍ واحدٍ كأنه إجماعٌ تدليس');
+  ok('بالقولين معًا', disputed.disputedPoets.includes('أبو تمام') && disputed.disputedPoets.includes('البحتري'));
+  eq('والبيت المنفرد يبقى واحدًا', fromRecord(recs.find((r) => /باطل/.test(r.t))).occurrences, 3);
+}
+
+// ── تقرير صحّة الاستخراج ──────────────────────────────────────────────────
+// ★ الدرس المتكرّر: كلُّ بِنيةِ كتابٍ جديدة تكسر شيئًا بصمت. ★
+{
+  const many = (n, poet) => Array.from({ length: n }, () => ({ poet, deathYear: poet ? 110 : null }));
+
+  const silent = bookHealth({ bookName: 'أعيان العصر', pages: 6, verses: many(21, null) });
+  eq('★ كتابٌ أخرج أبياتًا بلا قائلٍ واحدٍ يُعلَّم', silent.flags[0]?.kind, 'no-attribution',
+     'هكذا خرجت واحدٌ وعشرون بيتًا من الصفديّ بلا نسبةٍ ولم يقل شيءٌ كلمة');
+  eq('ويُقال بالعربية وبالجمع الصحيح', healthLine(silent).startsWith('٢١ بيتًا من ٦ صفحات'), true);
+
+  const good = bookHealth({ bookName: 'ديوان جرير', pages: 100, verses: many(300, 'جرير') });
+  eq('والسليمُ لا يُعلَّم', good.flags.length, 0);
+  eq('ونسبتُه تامّة', good.attributedRatio, 1);
+
+  const empty = bookHealth({ bookName: 'ديوانٌ ما', pages: 80, verses: [], expectVerses: true });
+  eq('★ وكتابُ شعرٍ لم يخرج منه بيتٌ واحدٌ يُعلَّم', empty.flags[0]?.kind, 'no-verses',
+     'بِنيةٌ لم تُعرف، وهي التي تُكتشف بعد ساعاتٍ من العمل لو لم تُقَل');
+
+  const junk = bookHealth({
+    bookName: 'كتابٌ فيه نثرٌ التُقط', pages: 40,
+    verses: [...many(30, 'جرير'), { poet: 'كيف ينعم', deathYear: null }, { poet: 'فظه', deathYear: null }],
+  });
+  ok('★ والأسماء التي ليست أسماءً تُعرَض', junk.flags.some((f) => f.kind === 'odd-names'));
+  ok('وتُقدَّم في القائمة', junk.oddNames.slice(0, 2).every((o) => o.suspect));
+
+  ok('و«جرير» و«لبيد» أسماءُ شعراء', looksLikeName('جرير') && looksLikeName('لبيد'),
+     'اشتراطُ كلمتين كان يرمي بأسماء الشعراء المشهورين في قائمة الشكّ');
+  ok('و«في كلمته» و«يمدح عبد الملك» ليست كذلك',
+     !looksLikeName('في كلمته') && !looksLikeName('يمدح عبد الملك'));
+
+  const review = needsReview([good, silent, empty]);
+  eq('والمراجعةُ تُرتَّب بالأكثر أبياتًا', review[0].bookName, 'أعيان العصر');
+  eq('ولا يدخلها السليم', review.length, 2);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

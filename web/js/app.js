@@ -106,6 +106,13 @@ function card(v) {
       ? `يُنسب إلى ${v.disputedPoets.map(esc).join('، وإلى ')}`
       : v.poet ? esc(v.poet) : '<span class="unknown">قائله غير معروف</span>';
 
+  // ★ اختلافُ الكتب في القائل خبرٌ يُقال، لا يُرجَّح فيه ولا يُكتم. ★
+  //   وكثيرٌ من الشعر مختلَفٌ في نسبته، وعرضُ قولٍ واحدٍ كأنه إجماعٌ تدليس.
+  const disputed = v.disputedPoets
+    ? `<p class="caveat">اختُلف في نسبته — نسبَه بعضُ الكتب إلى ${
+        v.disputedPoets.map(esc).join('، وبعضُها إلى ')}. ولم يُرجَّح.</p>`
+    : '';
+
   const life = v.deathYear
     ? `ت ${ar(String(v.deathYear))}هـ${v.deathYearGregorian ? ` / ${ar(String(v.deathYearGregorian))}م` : ''}`
     : '';
@@ -138,6 +145,11 @@ function card(v) {
     ? `<p class="src">بلغته ${ar(String(v.matchedQueries.length))} مداخلَ للمعنى: ${v.matchedQueries.map(esc).join(' · ')}</p>`
     : '';
   const occurrences = v.occurrences > 1 ? ` · ورد في ${countLabel(v.occurrences, PLACE)}` : '';
+  // ★ اتّفاقُ كتابين مستقلَّين على البيت أوثق من انفراد كتابٍ به ★
+  const alsoIn = v.alsoIn?.length
+    ? `<p class="src">وورد كذلك في: ${v.alsoIn.map(esc).join(' · ')}</p>` : '';
+  const agreed = v.occurrences > 1 && !v.disputedPoets
+    ? '<span class="badge t-agreed" title="ورد في أكثر من كتابٍ بالنسبة نفسها">تعاضدت عليه الكتب</span>' : '';
 
   const isSaved = saved.has(v.text);
   el.innerHTML = `
@@ -147,10 +159,10 @@ function card(v) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${esc(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
-      ${nabati}${mudawwar}
+      ${nabati}${mudawwar}${agreed}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
-    ${caveat}${pairing}${dated}${via}
+    ${alsoIn}${disputed}${caveat}${pairing}${dated}${via}
     <div class="actions">
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>

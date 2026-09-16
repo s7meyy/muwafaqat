@@ -140,6 +140,7 @@ button{min-height:44px}
 .filters-label{color:var(--muted);font-size:.9rem}
 .caveat{margin:8px 0 0;font-size:.88rem;color:var(--warn);line-height:1.9}
 .badge.t-nabati{color:var(--info)}
+.badge.t-agreed{color:var(--ok)}
 #filter-note{color:var(--muted);font-size:.86rem;margin-top:8px;text-align:center}
 
 /* ── أزرار البطاقة ── */

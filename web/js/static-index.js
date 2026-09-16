@@ -49,7 +49,9 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
       // ★ الفهرس مبنيٌّ من كتبٍ محقَّقة، ودليلُه أنه اُستخرج منها — لا بحثٌ حيّ
       evidence: { documentId: `index:${v.source.bookId}:${v.source.pageId}`, matched: 'index' },
       matchedQueries: [query],
-      occurrences: 1,
+      // ★ عددُ الكتب التي ورد فيها البيت يأتي من الفهرس نفسه ★ — كان يُكتب
+      //   «١» دائمًا، فيضيع التعاضدُ الذي بُني وقت الفهرسة.
+      occurrences: v.occurrences ?? 1,
     })),
     pagesRead: 0,
     rejectedCount: 0,
