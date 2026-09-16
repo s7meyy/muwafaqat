@@ -173,6 +173,9 @@ function card(v, rank = 0) {
   const bySense = v.semantic
     ? `<span class="badge t-sense" title="متجهُ المعنى قرّب البيتين، وقد حُسب يوم الفهرسة">موافقةٌ في المعنى${
         v.similarity ? ` (${ar(String(Math.round(v.similarity * 100)))}٪)` : ''}</span>` : '';
+  // ★ المشطور بيتٌ تامّ لا بيتٌ نقص عجزُه ★ — والأرجوزة تُنظم هكذا
+  const mashtur = v.mashtur
+    ? '<span class="badge t-mudawwar" title="بيتٌ مشطور: شطرٌ واحدٌ تامّ، وهو بناءُ الأرجوزة">مشطور</span>' : '';
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
 
@@ -260,7 +263,7 @@ function card(v, rank = 0) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${esc(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
-      ${nabati}${mudawwar}${agreed}${bySense}
+      ${nabati}${mashtur}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
     ${context}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}

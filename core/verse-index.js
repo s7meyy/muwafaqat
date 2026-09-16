@@ -147,6 +147,8 @@ export function toRecord(verse, id) {
     r: verse.register === 'nabati' ? 1 : 0,
     // ★ حكمُ المحقّق بالشكّ في البيت ★ — معقوفتان تُطبقان على البيت كلِّه
     w: verse.doubted ? 1 : 0,
+    // بيتٌ مشطور (أرجوزة): شطرٌ واحدٌ تامّ، لا بيتٌ نقص عجزُه
+    s: verse.mashtur ? 1 : 0,
     // ★ ما كتبه الكتاب نفسه: بحرُ القصيدة وغرضُها ومناسبتُها ★ — لا تخمين
     z: verse.meter ?? null,
     j: verse.purpose ?? null,
@@ -178,6 +180,7 @@ export function fromRecord(rec) {
     lifespanSource: rec.l ? { kind: 'index', label: rec.l } : null,
     register: rec.r ? 'nabati' : 'fasih',
     doubted: Boolean(rec.w),
+    mashtur: Boolean(rec.s),
     meter: rec.z ?? null,
     meterSource: rec.z ? 'book' : null,
     purpose: rec.j ?? null,

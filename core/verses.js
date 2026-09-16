@@ -223,6 +223,77 @@ export function extractVerses(pageText) {
     }
   });
 
+  // ★ الرجزُ المشطور: بيتٌ في كل سطر، ولا فاصلَ فيه. ★
+  out.push(...extractMashtur(lines, out));
+  out.sort((a, b) => a.lineIndex - b.lineIndex);
+  return out;
+}
+
+// أقلُّ ما يُعدّ أرجوزة، وأقلُّ نسبةِ اتّفاقِ القوافي فيها
+const MASHTUR_MIN_LINES = 3;
+const MASHTUR_RHYME_RATIO = 0.8;
+
+/**
+ * ★ الرجزُ المشطور — بابٌ من الشعر كان خارج الفهرس كلَّه. ★
+ *
+ * ديوان لبيد يسوق أراجيزَ بيتًا في كل سطر بلا فاصل:
+ *   «إنَّ أبَانَ كانَ حُلْوَاً بسرَا
+ *    مُلِّئَ عَمْراً وأُرِبَّ عَمْرَا
+ *    ونالَ مِنْ يكْسُومَ يَوْماً صِهْرَا»
+ * وأداةُ الاقتناص كلُّها مبنيّةٌ على «...» بين الشطرين، فلم يخرج منها شيء.
+ * والمتونُ المنظومة والأراجيزُ في الدواوين كثيرة، فالفائتُ بابٌ لا بيت.
+ *
+ * ★ والفارقُ بينه وبين قصيدةٍ كُتبت شطرًا في كل سطر هو القافية: ★ الأرجوزة
+ * تتّفق قوافي أسطرها كلِّها، والقصيدةُ المقطَّعة لا يتّفق منها إلا الزوجيّ.
+ * فلا يُقرن سطران في أرجوزةٍ فيصيرا بيتًا مختلَقًا، ولا يُفرَّق بيتٌ إلى بيتين.
+ */
+function extractMashtur(lines, already) {
+  const taken = new Set(already.map((v) => v.lineIndex));
+  const good = (t) => {
+    const w = wordCount(t);
+    return w >= MIN_WORDS && w <= 9 && isMostlyArabic(t) && !NOT_VERSE.test(normalize(t))
+      && !SEPARATOR.test(t) && !/[:؟!]/.test(t);
+  };
+
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length >= MASHTUR_MIN_LINES) {
+      const counts = new Map();
+      for (const i of run) {
+        const r = rhymeOf(lines[i].trim().replace(NUMBER_PREFIX, ''));
+        if (r) counts.set(r, (counts.get(r) ?? 0) + 1);
+      }
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (top && top[1] / run.length >= MASHTUR_RHYME_RATIO) {
+        for (const i of run) {
+          const raw = lines[i].trim();
+          const numbered = NUMBER_PREFIX.test(raw);
+          const text = raw.replace(NUMBER_PREFIX, '').replace(/\s*[\(\[][\u0660-\u0669\u06F0-\u06F90-9]{1,3}[\)\]]\s*$/, '').trim();
+          if (rhymeOf(text) !== top[0]) continue;   // سطرٌ دخيلٌ بين الأسطر
+          out.push({
+            doubted: false,
+            footnote: /[\(\[]([\u0660-\u0669\u06F0-\u06F90-9]{1,3})[\)\]]\s*$/.exec(raw)?.[1] ?? null,
+            sadr: text, ajz: '', text,
+            joined: null, mudawwar: false, splitWord: null,
+            plain: stripDiacritics(text).trim(),
+            offset: 0, column: 0, lineIndex: i,
+            pairing: 'mashtur',
+            mashtur: true,
+            numbered,
+          });
+        }
+      }
+    }
+    run = [];
+  };
+
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (taken.has(i) || !t || !good(t)) { flush(); return; }
+    run.push(i);
+  });
+  flush();
   return out;
 }
 
