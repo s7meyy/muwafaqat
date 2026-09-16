@@ -86,6 +86,7 @@ fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify({
 }, null, 2));
 
 const mb = (n) => (n / 1048576).toFixed(1);
+const peak = process.memoryUsage().rss;
 process.stdout.write(
   `فُهرس ${toArabicDigits(String(built.meta.verses))} بيتًا من ${toArabicDigits(String(verses.length))} مستخرَجًا\n`
   + `الكلمات: ${toArabicDigits(String(built.tokens.size))} شظيّة (${toArabicDigits(mb(tokenBytes))} م.ب)\n`
@@ -98,4 +99,5 @@ process.stdout.write(
       + `${toArabicDigits(String(built.meta.maxPostings))} موضعًا: ${built.meta.cappedTokens.slice(0, 8).join('، ')}`
       + `${built.meta.cappedTokens.length > 8 ? '…' : ''}\n`
     : '')
+  + `الذاكرة المستعملة: ${toArabicDigits(mb(peak))} م.ب\n`
   + `← ${OUT}\n`);

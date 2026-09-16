@@ -398,15 +398,19 @@ ok('والعامّة تُقبل', !isPrivateAddress('8.8.8.8') && !isPrivateAddr
     'المرشَّحون يتفرّقون في شظايا السجلّات، فتكثيرُها يُصغّر ما يُجلب لكل بحث');
   eq('وبصمة الكلمة ثابتة', bucketOf('المطالب'), bucketOf('المطالب'));
   ok('وتقع في المدى', bucketOf('المطالب') < TOKEN_SHARDS && verseBucketOf(7) < VERSE_SHARDS);
+  ok('★ وعددُ الشظايا يتبع الحجم لا يكون ثابتًا',
+    built.meta.verseShards < VERSE_SHARDS,
+    'فهرسٌ فيه خمسون بيتًا كان يُكتب في ١٨٤٣٣ ملفًا');
 
+  const shardOpts = { tokenShards: built.meta.tokenShards, verseShards: built.meta.verseShards };
   const load = async (kind, b) => (kind === 'tokens' ? built.tokens.get(b) : built.store.get(b)) ?? {};
   {
-    const r = await searchIndex('المطالب التمني', load);
+    const r = await searchIndex('المطالب التمني', load, shardOpts);
     eq('البحث يجد البيت', r.verses.length, 1);
     eq('بقائله', r.verses[0].poet, 'شوقي');
     eq('وبكتابه وصفحته', r.verses[0].source.printedPage, '66');
-    eq('ومجهولُ القائل يبقى مجهولًا', (await searchIndex('صعود الجبال', load)).verses[0].poet, null);
-    eq('وما ليس فيه لا يُخترع', (await searchIndex('كلمات غائبة تماما', load)).verses.length, 0);
+    eq('ومجهولُ القائل يبقى مجهولًا', (await searchIndex('صعود الجبال', load, shardOpts)).verses[0].poet, null);
+    eq('وما ليس فيه لا يُخترع', (await searchIndex('كلمات غائبة تماما', load, shardOpts)).verses.length, 0);
   }
   ok('★ والتقارب يُشترط: الكلمتان في بيتٍ واحدٍ لا يكفي، بل قريبتان',
     withinProximity('وما نيل المطالب بالتمني ولكن تؤخذ الدنيا غلابا', ['المطالب', 'التمني'], 12)
@@ -461,10 +465,11 @@ ok('★ و«ليس بيتًا عربيًّا» جوابٌ غيرُ «لا نتي
     deathYear: 1351, lifespanSource: { label: 'الأعلام للزركلي' },
     source: { bookName: 'علم المعاني', printedPage: '66', bookId: 17670, pageId: 60 } }];
   const ix = buildIndex(sample);
+  const so = { tokenShards: ix.meta.tokenShards, verseShards: ix.meta.verseShards };
   const load = async (k, b) => (k === 'tokens' ? ix.tokens.get(b) : ix.store.get(b)) ?? {};
   eq('★ البيت لا يعود جوابًا لنفسه',
-    (await searchIndex('المطالب التمني', load, { excludeVerse: sample[0].text })).verses.length, 0);
-  const got = (await searchIndex('المطالب التمني', load)).verses[0];
+    (await searchIndex('المطالب التمني', load, { ...so, excludeVerse: sample[0].text })).verses.length, 0);
+  const got = (await searchIndex('المطالب التمني', load, so)).verses[0];
   eq('★ والعصر يُشتقّ في الفهرس — كانت البطاقة تقول «عصره غير معروف»', got.era?.name, 'حديث ومعاصر');
   eq('والميلاديّ معه', got.deathYearGregorian, 1932);
   eq('★ وللمصدر رابطٌ يُفتح', got.source.url, 'https://shamela.ws/book/17670/60');
@@ -474,7 +479,7 @@ ok('★ و«ليس بيتًا عربيًّا» جوابٌ غيرُ «لا نتي
   // (٥) السوابق: «التمني» كانت لا تجد «بالتمني»
   ok('★ السابقة الملتصقة تُجرَّد', indexTokens('بالتمني').includes('تمني'));
   for (const query of ['التمني غلابا', 'بالتمني الدنيا', 'تمني مطالب', 'المطالب دنيا']) {
-    ok(`ويجد «${query}»`, (await searchIndex(query, load)).verses.length === 1);
+    ok(`ويجد «${query}»`, (await searchIndex(query, load, so)).verses.length === 1);
   }
 }
 eq('ورابط الكتاب بلا صفحة', shamelaUrl(17670), 'https://shamela.ws/book/17670');
@@ -608,14 +613,15 @@ eq('والنسبة بلا نقطتين تُقرأ', readAttributionLine('وقا�
     { text: 'من كان مرعى عزمه وهمومه ... روض الأماني لم يزل مهزولا', poet: 'أبو تمام', source: {} },
     { text: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', poet: 'شوقي', source: {} },
   ]);
+  const sh = { tokenShards: index.meta.tokenShards, verseShards: index.meta.verseShards };
   const load = async (k, b) => (k === 'tokens' ? index.tokens.get(b) : index.store.get(b)) ?? {};
 
   ok('★ «التمني الأماني» تجد ثلاثة — وكانت تعود صفرًا',
-    (await searchIndex('التمني الأماني', load)).verses.length === 3,
+    (await searchIndex('التمني الأماني', load, sh)).verses.length === 3,
     'تجريد السوابق ضاعف كلمات السؤال، فصار شرط «كلّها إلا واحدة» يطلب ثلاثًا من أربع');
 
   const whole = await searchIndex('وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا', load,
-    { excludeVerse: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا' });
+    { ...sh, excludeVerse: 'وما نيل المطالب بالتمني ... ولكن تؤخذ الدنيا غلابا' });
   ok('★ والبحث بالبيت كاملًا يجد موافقه — وكان يعود صفرًا دائمًا',
     whole.verses.length >= 1 && whole.verses[0].text.includes('المخارج بالتمنّي'),
     'بيتٌ من ثماني كلماتٍ كان يطلب سبعًا مشتركة، ولا يشترك بيتان في سبعٍ إلا أن يكونا واحدًا');
@@ -668,14 +674,45 @@ eq('والنسبة القصيرة بلا نقطتين تبقى مقبولة',
     text: `الدنيا كلمة${i} فريدة ... عجز رقم ${i} هنا`, poet: null, source: {},
   }));
   const ix = buildIndex(many);
-  const bucket = ix.tokens.get(bucketOf('الدنيا'));
+  const bucket = ix.tokens.get(bucketOf('الدنيا', ix.meta.tokenShards));
   ok('★ قائمةُ الكلمة المطروقة تُقصّ عند حدّ',
     bucket['الدنيا'].length <= ix.meta.maxPostings,
     'بلا حدٍّ تبلغ شظيّةٌ واحدةٌ ميغابايتًا، ينزّلها المتصفّح كاملةً لأن كلمةً مطروقةً وقعت في السؤال');
   ok('★ ويُقال إنها قُصَّت ولا يُكتم',
     ix.meta.cappedTokens.includes('الدنيا'));
-  ok('والكلمة النادرة لا تُمَسّ', ix.tokens.get(bucketOf('كلمه7'))?.['كلمه7']?.length === 1
-    || ix.tokens.get(bucketOf('فريده'))?.['فريده']?.length === ix.meta.maxPostings);
+  ok('والكلمة النادرة لا تُمَسّ',
+    ix.tokens.get(bucketOf('كلمه7', ix.meta.tokenShards))?.['كلمه7']?.length === 1);
+}
+
+// ── بِنية كتب التراجم ─────────────────────────────────────────────────────
+{
+  const page = 'قال: أنشد أبو محمد البافي قول الشاعر [من الوافر]:\n'
+    + 'دخلنا كارهين لها فلما … ألفناها خرجنا مكرهينا\n'
+    + 'فقال: يوشك أن يكون هذا في بغداد، وأنشد لنفسه في معنى ذلك [من الوافر]:\n'
+    + 'على بغداد معدن كل طيب … ومغنى نزهة المتنزهينا';
+  const v = attributeVerses(page, extractVerses(page), { bookName: 'تاريخ بغداد - ت بشار' });
+  eq('بيتان', v.length, 2);
+  ok('★ «وأنشد لنفسه» إحالةٌ لا اسم',
+    v.every((x) => x.poet === null),
+    'كان يخرج منها شاعرٌ اسمه «لنفسه»، ويدوم على سبعة أبياتٍ بعده — منها قصيدةٌ لأخي الراوي');
+  eq('والإحالة تُقرأ إرثًا', readAttributionLine('وأنشد لنفسه في معنى ذلك:')?.kind, 'inherit');
+  eq('والاسم الصريح بعد «أنشد» يبقى', readAttributionLine('وأنشد أبو تمام:')?.name, 'أبو تمام');
+  eq('و«…» فاصلٌ كـ«...»', extractVerses('صدر البيت هنا … عجز البيت هناك').length, 1);
+}
+
+// ── عددُ الشظايا يتبع الحجم ───────────────────────────────────────────────
+{
+  const small = buildIndex(Array.from({ length: 50 }, (_, i) =>
+    ({ text: `بيت رقم ${i} هنا ... وعجزه رقم ${i} هناك`, poet: null, source: {} })));
+  ok('★ فهرسٌ صغيرٌ لا يُكتب في ١٨٤٣٣ ملفًا',
+    small.tokens.size + small.store.size < 100,
+    'التقسيم يتبع الحجم؛ والمقصود صغرُ الشظيّة لا كثرةُ الملف');
+  eq('وشظايا السجلّات ستّ عشرة', small.meta.verseShards, 16);
+
+  const big = buildIndex(Array.from({ length: 5000 }, (_, i) =>
+    ({ text: `بيت رقم ${i} كلمة${i} ... عجز رقم ${i}`, poet: null, source: {} })));
+  ok('وتكثر بكثرة الأبيات', big.meta.verseShards > small.meta.verseShards);
+  ok('ولا تتجاوز الحدّ', big.meta.verseShards <= VERSE_SHARDS);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

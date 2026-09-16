@@ -24,9 +24,29 @@ export const INDEX_VERSION = 1;
 // والأرقام قيست لا خُمّنت: ٣٥٧ بايتًا لكل بيت. فعند نصف مليون بيت يصير الفهرس
 // ١٧٠ ميغابايت كاملًا — لكن البحث الواحد لا ينزّل منه إلا ٢٣٠ ك.ب تقريبًا،
 // وهذا هو الرقم الذي يهمّ من يفتح الموقع.
-export const TOKEN_SHARDS = 2048;
-export const VERSE_SHARDS = 16384;
+export const TOKEN_SHARDS = 2048;     // الحدّ الأعلى
+export const VERSE_SHARDS = 16384;    // الحدّ الأعلى
 export const SHARDS = TOKEN_SHARDS;   // للتوافق
+
+// ★ عددُ الشظايا يتبع حجم الفهرس، لا يكون ثابتًا. ★
+//
+// فهرسٌ فيه خمسون بيتًا كان يُكتب في ١٨٤٣٣ ملفًا — ملفٌ لكل بيتٍ وأكثر. وذاك
+// عبثٌ في الرفع والنشر (وبعض المستضيفات تحدّ عدد الملفات)، ولا يُسرّع شيئًا.
+// والمقصود من التقسيم أن تصغر الشظيّة لا أن يكثر الملف، فنقسم على قدر ما
+// يجعل في الشظيّة نحوَ خمسين سجلًّا، ثم نقف عند الحدّ الأعلى.
+// ★ العددان مقيسان لا مخمَّنان. ★
+// خمسون سجلًّا في الشظيّة جعلها ٩٫٥ ك.ب على بياناتٍ واقعية، والبحثُ يجلب أربعين
+// شظيّة — أي ٣٨٠ ك.ب لكل سؤال. فخُفِّضت إلى خمسةٍ وعشرين: الشظيّة نحو ٥ ك.ب،
+// والسؤال نحو ١٩٠ ك.ب، وثمنُ ذلك ضِعفُ عدد الملفات — وهو أهونُ من ضِعف التنزيل.
+const PER_VERSE_SHARD = 25;
+const PER_TOKEN_SHARD = 400;
+
+function fitShards(count, per, max) {
+  const wanted = Math.max(1, Math.ceil(count / per));
+  let n = 16;
+  while (n < wanted && n < max) n *= 2;
+  return Math.min(n, max);
+}
 
 // كلماتٌ لا تُفهرس: تقع في كل بيتٍ فلا تميّز شيئًا، وتُضخّم الفهرس بلا فائدة
 const NOT_INDEXED = new Set([
@@ -61,13 +81,13 @@ function stripPrefixes(word) {
 }
 
 /** بصمةٌ ثابتةٌ للكلمة ← رقم شظيّتها. ثابتةٌ عبر اللغات والأنظمة. */
-export function bucketOf(token) {
+export function bucketOf(token, shards = TOKEN_SHARDS) {
   let h = 0x811c9dc5;
   for (let i = 0; i < token.length; i++) {
     h ^= token.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return h % TOKEN_SHARDS;
+  return h % shards;
 }
 
 export function shardName(bucket) {
@@ -155,7 +175,11 @@ export function fromRecord(rec) {
  * يبني الفهرس في الذاكرة من أبياتٍ مستخرَجة.
  * يُرجع { meta, tokens: Map<bucket, {token: [ids]}>, verses: Map<bucket, {id: record}> }
  */
-export function buildIndex(verses) {
+export function buildIndex(verses, opts = {}) {
+  const n = verses.length;
+  const verseShards = opts.verseShards ?? fitShards(n, PER_VERSE_SHARD, VERSE_SHARDS);
+  const tokenShards = opts.tokenShards ?? fitShards(n, PER_TOKEN_SHARD, TOKEN_SHARDS);
+
   const tokens = new Map();
   const store = new Map();
   const capped = new Set();
@@ -168,12 +192,12 @@ export function buildIndex(verses) {
     seen.add(key);
 
     const rec = toRecord(v, ++id);
-    const vb = verseBucketOf(id);
+    const vb = verseBucketOf(id, verseShards);
     if (!store.has(vb)) store.set(vb, {});
     store.get(vb)[id] = rec;
 
     for (const tok of indexTokens(v.text)) {
-      const b = bucketOf(tok);
+      const b = bucketOf(tok, tokenShards);
       if (!tokens.has(b)) tokens.set(b, {});
       const bucket = tokens.get(b);
       const list = (bucket[tok] ??= []);
@@ -185,7 +209,7 @@ export function buildIndex(verses) {
   return {
     meta: {
       version: INDEX_VERSION, verses: id, builtAt: new Date().toISOString(),
-      tokenShards: TOKEN_SHARDS, verseShards: VERSE_SHARDS,
+      tokenShards, verseShards,
       maxPostings: MAX_POSTINGS,
       // كلماتٌ بلغت الحدّ فقُصَّت قوائمُها — بحثٌ بها وحدها لا يستوعب كلَّ ما في الفهرس
       cappedTokens: [...capped].sort(),
@@ -195,8 +219,8 @@ export function buildIndex(verses) {
 }
 
 /** شظيّة السجلّ تُشتقّ من رقمه — فلا حاجة إلى جدولٍ يدلّ عليها. */
-export function verseBucketOf(id) {
-  return id % VERSE_SHARDS;
+export function verseBucketOf(id, shards = VERSE_SHARDS) {
+  return id % shards;
 }
 
 /**
@@ -207,7 +231,10 @@ export function verseBucketOf(id) {
  * `proximity` يحاكي بحث الشاملة بالتقارب: لا يكفي وقوعُ الكلمات في البيت،
  * بل تقارُبُها فيه — والبيت قصيرٌ أصلًا، فهو قيدٌ لطيف.
  */
-export async function searchIndex(query, load, { limit = 20, proximity = 12, excludeVerse = null } = {}) {
+export async function searchIndex(query, load, {
+  limit = 20, proximity = 12, excludeVerse = null,
+  tokenShards = TOKEN_SHARDS, verseShards = VERSE_SHARDS,
+} = {}) {
   // ★ البيت الذي سألتَ به ليس موافقةً له. ★ كان الفهرس يُعيده جوابًا لنفسه.
   const excludeFp = excludeVerse ? fingerprint(excludeVerse) : null;
   const groups = queryGroups(query);
@@ -218,14 +245,14 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12, exc
   const postings = [];
   const buckets = new Map();
   for (const t of terms) {
-    const b = bucketOf(t);
+    const b = bucketOf(t, tokenShards);
     if (!buckets.has(b)) buckets.set(b, load('tokens', b));
   }
   const loaded = new Map();
   for (const [b, p] of buckets) loaded.set(b, await p);
 
   for (const t of terms) {
-    const bucket = loaded.get(bucketOf(t));
+    const bucket = loaded.get(bucketOf(t, tokenShards));
     postings.push({ term: t, ids: bucket?.[t] ?? [] });
   }
 
@@ -265,7 +292,7 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12, exc
   // (٣) نجلب شظايا السجلّات ثم نتحقّق من التقارب على النصّ نفسه
   const verseBuckets = new Map();
   for (const [id] of candidates) {
-    const b = verseBucketOf(id);
+    const b = verseBucketOf(id, verseShards);
     if (!verseBuckets.has(b)) verseBuckets.set(b, load('verses', b));
   }
   const stores = new Map();
@@ -273,7 +300,7 @@ export async function searchIndex(query, load, { limit = 20, proximity = 12, exc
 
   const out = [];
   for (const [id, hits] of candidates) {
-    const rec = stores.get(verseBucketOf(id))?.[id];
+    const rec = stores.get(verseBucketOf(id, verseShards))?.[id];
     if (!rec) continue;
     if (excludeFp && fingerprint(rec.t) === excludeFp) continue;
     if (!withinProximity(rec.t, terms, proximity)) continue;

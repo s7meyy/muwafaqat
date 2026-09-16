@@ -22,6 +22,11 @@ const PRONOUN = /^(?:و)?(?:ومن\s+)?(?:قوله|له|قال\s+أيضا|وقا
 //   يشبهه لقائلٍ آخر لم يُسمَّ. وتوريثُهما ينسب شعرَ مجهولٍ إلى من قبله.
 const SIMILAR_TO = /^(?:و)?(?:نحوه|مثله|قريب\s+منه|نحو\s+ذلك|مثل\s+ذلك|في\s+معناه)\s*:?\s*$/;
 
+// ★ «وأنشد لنفسه» إحالةٌ على من قبله لا اسمٌ له. ★
+//   كتبُ التراجم تكثر منها، وكان يخرج منها شاعرٌ اسمه «لنفسه»، ويدوم على
+//   ما بعده من أبيات — فوُرِّثت قصيدةُ أخي الراوي لهذا «الشاعر» المختلَق.
+const SELF_REF = /(?:^|\s)ل(?:نفسه|نفسها|نفسي|ه)\s*(?::|$|في\s)/;
+
 // تصريحٌ بالجهل بالقائل — وهو نسبةٌ صادقة إلى «لا أحد»
 // تصريحٌ بالجهل بالقائل — وهو نسبةٌ صادقة إلى «لا أحد».
 // ★ و«رجل من بني الحارث» منه: ★ كان يُقتصّ منه «رجل» فيصير اسمًا لا يدلّ
@@ -109,6 +114,8 @@ export function readAttributionLine(line, { requireColon = false } = {}) {
   while ((m = CUES.exec(text)) !== null) last = m;
   if (last) {
     const after = text.slice(last.index + last[0].length);
+    // «أنشد لنفسه» ← القائل هو المذكور قبله، ولا يُعرف اسمُه من هذا السطر
+    if (SELF_REF.test(' ' + after)) return { kind: 'inherit' };
     if (anonymous || ANONYMOUS.test(' ' + after)) return { kind: 'anonymous' };
     const name = cleanName(after);
     if (name) return { kind: 'named', name };

@@ -51,7 +51,9 @@ function readBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 12e6) { reject(new Error('الطلب أكبر من اللازم')); req.destroy(); }
+      // ★ الصورة المصغَّرة نحو ٣٠٠ ك.ب، لكن المتصفّح القديم قد يرفعها كما هي
+      //   وترميزُ base64 يزيدها الثلث — فالحدُّ يتّسع لذلك ولا يقف على حافّته.
+      if (data.length > 18e6) { reject(new Error('الطلب أكبر من اللازم')); req.destroy(); }
     });
     req.on('end', () => {
       if (!data) return resolve({});

@@ -7,7 +7,9 @@
 import { countLabel, DIFFERENCE } from '../../core/plural.js';
 import { toArabicDigits } from '../../core/normalize.js';
 
-const MAX_BYTES = 8 * 1024 * 1024;
+const MAX_BYTES = 12 * 1024 * 1024;   // قبل التصغير
+const MAX_EDGE = 2000;                // أطولُ ضلعٍ بعد التصغير
+const JPEG_QUALITY = 0.85;
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -60,7 +62,7 @@ export function install({ bridge, token, onApproved, onUnapproved }) {
   async function handleFile(f) {
     if (!f) return;
     if (!f.type.startsWith('image/')) { summary.textContent = 'هذا ليس ملف صورة.'; summary.className = 'hint err'; return; }
-    if (f.size > MAX_BYTES) { summary.textContent = 'الصورة أكبر من ٨ ميغابايت. صغّرها ثم أعد المحاولة.'; summary.className = 'hint err'; return; }
+    if (f.size > MAX_BYTES) { summary.textContent = 'الصورة أكبر من ١٢ ميغابايت. صغّرها ثم أعد المحاولة.'; summary.className = 'hint err'; return; }
 
     previewImg.src = URL.createObjectURL(f);
     preview.hidden = false;
@@ -74,11 +76,11 @@ export function install({ bridge, token, onApproved, onUnapproved }) {
     setApproved(false);
 
     try {
-      const base64 = await toBase64(f);
+      const img = await shrink(f);
       const res = await fetch(`${bridge}/v1/transcribe`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ image: base64, mimeType: f.type }),
+        body: JSON.stringify({ image: img.data, mimeType: img.mime }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -105,6 +107,37 @@ export function install({ bridge, token, onApproved, onUnapproved }) {
     r.onerror = () => reject(new Error('تعذّرت قراءة الملف'));
     r.readAsDataURL(f);
   });
+
+  /**
+   * ★ تصغيرُ الصورة قبل رفعها. ★
+   *
+   * صورةُ الجوال تبلغ ثمانيةَ ميغابايت، وترميزُها base64 يزيدها الثلث فتصير
+   * أحدَ عشر — على حافّة ما يقبله الخادم، وثقيلةٌ على شبكةٍ بطيئة. والنموذج
+   * البصريّ لا ينتفع بأكثر من ألفَي بكسل في الضلع.
+   *
+   * وإن تعذّر التصغير (متصفّحٌ قديم، أو صيغةٌ لا تُفكّ) تُرفع الصورة كما هي —
+   * فالتصغيرُ تحسينٌ لا شرط.
+   */
+  async function shrink(file) {
+    if (file.size <= 400 * 1024) return { data: await toBase64(file), mime: file.type, shrunk: false };
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size <= 2 * 1024 * 1024) {
+        return { data: await toBase64(file), mime: file.type, shrunk: false };
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const url = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+      bitmap.close?.();
+      return { data: url.split(',')[1], mime: 'image/jpeg', shrunk: true,
+        width: canvas.width, height: canvas.height };
+    } catch {
+      return { data: await toBase64(file), mime: file.type, shrunk: false };
+    }
+  }
 
   drop.addEventListener('click', () => file.click());
   drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });

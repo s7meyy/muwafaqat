@@ -37,7 +37,11 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
     throw e;
   }
 
-  const { verses, scanned } = await searchIndex(query, loadShard, { limit, excludeVerse: excludeVerse ?? query });
+  // ★ عددُ الشظايا يُقرأ من الفهرس نفسه، لا يُفترض ثابتًا ★
+  const { verses, scanned } = await searchIndex(query, loadShard, {
+    limit, excludeVerse: excludeVerse ?? query,
+    tokenShards: meta.tokenShards, verseShards: meta.verseShards,
+  });
   return {
     query,
     verses: verses.map((v) => ({
