@@ -55,36 +55,61 @@ function sadrCandidates(before) {
   return cuts.map((c) => tail.slice(c).trim()).filter(Boolean);
 }
 
-/** اقتصاص عجز البيت: نقف عند أول علامة نثر، ثم نقصّه إلى ما يوازن الصدر. */
-function cutAjz(after, sadrWords) {
+/**
+ * اقتصاص عجز البيت.
+ * ★ ولا يُؤخذ بأول حدٍّ يُصادَف ★ — كما لا يُؤخذ به في الصدر: شروح الألفية
+ * تضع النقطتين داخل الشطر نفسه:
+ *   «٩ - واحده: كلمة والقول: عم ... وكلمة: بها كلام قد يؤم»
+ * فالوقوف عند نقطتي «وكلمة:» يجعل العجز كلمةً واحدة، فيُردّ البيت كلُّه ويسقط
+ * من الفهرس. فنجمع حدود العجز مرشَّحاتٍ ونحتكم إلى موازنة الشطرين.
+ */
+function ajzCandidates(after) {
   const head = after.slice(0, MAX_SCAN);
+  const cuts = [];
   PROSE_BOUNDARY.lastIndex = 0;
-  const m = PROSE_BOUNDARY.exec(head);
-  let candidate = (m ? head.slice(0, m.index) : head).trim();
-
-  // التوازن: العجز لا يزيد كثيرًا على الصدر. ما زاد فهو نثرٌ لصق بالبيت.
-  const words = candidate.split(/\s+/).filter(Boolean);
-  const cap = Math.max(MIN_WORDS, Math.round(sadrWords * 1.6));
-  if (words.length > cap) candidate = words.slice(0, cap).join(' ');
-  return candidate.trim();
+  let m;
+  while ((m = PROSE_BOUNDARY.exec(head)) !== null) cuts.push(m.index);
+  cuts.push(head.length);
+  const out = [];
+  for (const c of cuts) {
+    const t = head.slice(0, c).trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
 }
 
-/** يختار من مرشَّحي الصدر ما يوازن العجز، ويُرجع الزوج أو null. */
+/** يقصّ المرشَّح إلى ما لا يزيد كثيرًا على الصدر — فما زاد نثرٌ لصق بالبيت. */
+function capAjz(candidate, sadrWords) {
+  const words = candidate.split(/\s+/).filter(Boolean);
+  const cap = Math.max(MIN_WORDS, Math.round(sadrWords * 1.6));
+  return (words.length > cap ? words.slice(0, cap).join(' ') : candidate).trim();
+}
+
+function cutAjz(after, sadrWords) {
+  const list = ajzCandidates(after);
+  return list.length ? capAjz(list[0], sadrWords) : '';
+}
+
+/** يختار من مرشَّحي الشطرين ما يوازن بعضه بعضًا، ويُرجع الزوج أو null. */
 function bestPair(before, after) {
   const candidates = sadrCandidates(before);
   if (!candidates.length) return null;
+  const ajzList = ajzCandidates(after);
+  if (!ajzList.length) return null;
   const longest = candidates[0];
-  const roughAjz = cutAjz(after, Math.min(MAX_WORDS, wordCount(longest) || MAX_WORDS));
+  const roughAjz = capAjz(ajzList[0], Math.min(MAX_WORDS, wordCount(longest) || MAX_WORDS));
   const target = wordCount(roughAjz);
 
   let best = null;
   for (const sadr of candidates) {
-    const ajz = cutAjz(after, wordCount(sadr));
-    if (!acceptable(sadr, ajz)) continue;
     const a = wordCount(sadr);
-    const b = wordCount(ajz);
-    const score = Math.abs(a - (target || b)) + Math.abs(a - b);
-    if (!best || score < best.score) best = { sadr, ajz, score };
+    for (const raw of ajzList) {
+      const ajz = capAjz(raw, a);
+      if (!acceptable(sadr, ajz)) continue;
+      const b = wordCount(ajz);
+      const score = Math.abs(a - (target || b)) + Math.abs(a - b);
+      if (!best || score < best.score) best = { sadr, ajz, score };
+    }
   }
   return best;
 }

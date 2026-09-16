@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { McpStdioClient } from '../bridge/mcp-client.js';
 import { extractVerses } from '../core/verses.js';
-import { attributeVerses } from '../core/attribution.js';
+import { attributeVerses, entrySubject } from '../core/attribution.js';
 import { POETRY_CATEGORIES } from '../bridge/shamela.js';
 import { toArabicDigits } from '../core/normalize.js';
 import { Biography } from '../bridge/biography.js';
@@ -94,6 +94,48 @@ async function* pagesOf(bookId) {
   }
 }
 
+// ★ كتبٌ مبناها على التراجم: صاحبُ الترجمة هو قائل شعرها. ★
+// وفهرس الكتاب نفسه يسمّي صاحب كل ترجمة وصفحتَها، فنبني منه خريطة
+// «صفحة ← صاحب ترجمتها». ولا يُستعمل هذا في الدواوين، فعناوين فهارسها
+// قوافٍ وأبوابٌ لا أسماءَ شعراء.
+const ENTRY_CATEGORIES = new Set([25, 26, 27]); // التاريخ · التراجم والطبقات · الأنساب
+const MAX_TOC_TITLES = 50_000;
+
+async function entryMapOf(bookId) {
+  let r;
+  try {
+    r = await client.callTool('shamela_get_toc', {
+      book_id: bookId, parent_id: 0, depth: 5, response_format: 'json',
+    });
+  } catch { return null; }
+  const titles = flattenTitles(r?.titles ?? []);
+  if (!titles.length || titles.length > MAX_TOC_TITLES) return null;
+  const entries = titles
+    .map((t) => ({ pageId: Number(t.page_id), name: entrySubject(t.title_text) }))
+    .filter((e) => Number.isFinite(e.pageId))
+    .sort((a, b) => a.pageId - b.pageId);
+  return entries.length ? entries : null;
+}
+
+function flattenTitles(nodes, out = []) {
+  for (const n of nodes) {
+    out.push(n);
+    if (Array.isArray(n.children)) flattenTitles(n.children, out);
+  }
+  return out;
+}
+
+/** صاحبُ الترجمة التي تقع فيها الصفحة — وهو آخر عنوانٍ قبلها. */
+function subjectAt(entries, pageId) {
+  if (!entries) return null;
+  let found = null;
+  for (const e of entries) {
+    if (e.pageId > pageId) break;
+    found = e;                    // ★ حتى لو كان عنوانًا غير ترجمة (name=null) ★
+  }                               //   فهو يقطع ما قبله، ولا يُورَّث عبره.
+  return found?.name ?? null;
+}
+
 // ★ سنةُ الوفاة تُستخرج مع البيت لا بعده. ★
 // الفهرس الساكن لا خادمَ خلفه يسأل عن التراجم وقت البحث، فإن لم تُخزَّن السنة
 // هنا ظهرت كلُّ بطاقةٍ في الموقع بـ«عصره غير معروف» — وهو نقضٌ لأصل المشروع.
@@ -127,11 +169,24 @@ async function main() {
     //   وإلّا أُعيدت أبياتُه في التشغيل التالي فتكرّرت في الملف. (الفهرسة
     //   تُزيل المكرَّر، لكن الملف ينتفخ بلا فائدة في عملٍ يمتدّ ساعات.)
     const mark = fs.existsSync(OUT) ? fs.statSync(OUT).size : 0;
+    // النسبة تعبر حدّ الصفحة داخل الكتاب الواحد (قصيدةٌ في ثلاث صفحات)، ولا تعبر
+    // حدّ الكتاب البتّة.
+    let carry = null;
+    let lastSubject;
+    const entries = ENTRY_CATEGORIES.has(Number(book.category_id)) ? await entryMapOf(book.book_id) : null;
     for await (const page of pagesOf(book.book_id)) {
       const body = page?.body ?? '';
       bookPages++;
       if (!body) continue;
-      const found = attributeVerses(body, extractVerses(body), { bookName: book.book_name });
+      const entryPoet = subjectAt(entries, page.page_id);
+      // ★ ترجمةٌ جديدة تقطع ميراثَ النسبة. ★ وإلا انسابت نسبةُ المترجَم قبله
+      //   إلى شعر هذا، وهو كذبٌ على رجلين في سطرٍ واحد.
+      if (entries && entryPoet !== lastSubject) carry = null;
+      lastSubject = entryPoet;
+      const found = attributeVerses(body, extractVerses(body), {
+        bookName: book.book_name, carry, entryPoet,
+      });
+      carry = found.carry ?? carry;
       for (const v of found) {
         const life = (!NO_DATES && v.poet) ? await biography.deathYearOf(v.poet) : null;
         sink.write(JSON.stringify({
