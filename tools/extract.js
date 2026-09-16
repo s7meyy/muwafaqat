@@ -19,6 +19,7 @@ import { POETRY_CATEGORIES } from '../bridge/shamela.js';
 import { toArabicDigits } from '../core/normalize.js';
 import { Biography } from '../bridge/biography.js';
 import { bookHealth, healthLine, needsReview } from '../core/health.js';
+import { parseFootnotes, normalizeDigits } from '../core/apparatus.js';
 
 const args = parseArgs(process.argv.slice(2));
 const OUT = args.out ?? 'index/verses.jsonl';
@@ -195,11 +196,19 @@ async function main() {
       const found = attributeVerses(body, extractVerses(body), {
         bookName: book.book_name, carry, entryPoet,
       });
+      // ★ حواشي المحقّق: شرحُ الغريب والروايةُ الأخرى — تُلحق ببيتها برقمها ★
+      const notes = parseFootnotes(page.foot);
       carry = found.carry ?? carry;
       for (const v of found) {
+        const note = v.footnote ? notes.get(normalizeDigits(v.footnote)) : null;
         const life = (!NO_DATES && v.poet) ? await biography.deathYearOf(v.poet) : null;
         sink.write(JSON.stringify({
           text: v.text, poet: v.poet, poetSource: v.poetSource,
+          doubted: v.doubted || undefined,
+          meter: v.meter ?? undefined, meterSource: v.meter ? 'book' : undefined,
+          purpose: v.purpose ?? undefined, occasion: v.occasion ?? undefined,
+          glosses: note?.glosses?.length ? note.glosses.slice(0, 3) : undefined,
+          variant: note?.variant ?? undefined,
           deathYear: life?.deathYear ?? null,
           lifespanSource: life?.source ? { label: life.source.label } : null,
           source: {

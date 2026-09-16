@@ -148,7 +148,15 @@ export function extractVerses(pageText) {
     let m;
     while ((m = SEPARATOR_G.exec(line)) !== null) {
       const before = line.slice(0, m.index);
-      const after = line.slice(m.index + m[0].length);
+      const rawAfter = line.slice(m.index + m[0].length);
+
+      // ★ رقمُ حاشية المحقّق يُقتطع قبل الموازنة. ★
+      //   «تَدِفُّ دَفيفَ الرَّائحِ المُتَمَطِّرِ ★(٣)★» — كان الرقم يُحسب كلمةً
+      //   من العجز فيرجّح قطعًا خاطئًا، ثم يبقى شطرُه في النصّ: «المُتَمَطِّرِ (٣».
+      //   وهو في الحقيقة مفتاحُ الشرح: به تُعرف حاشيةُ هذا البيت من حواشي الصفحة.
+      const footMatch = /\s*[\(\[]([\u0660-\u0669\u06F0-\u06F90-9]{1,3})[\)\]]\s*$/.exec(rawAfter);
+      const after = footMatch ? rawAfter.slice(0, footMatch.index) : rawAfter;
+      const footMark = footMatch?.[1] ?? null;
 
       const pair = bestPair(before, after);
       if (!pair) continue;
@@ -157,11 +165,45 @@ export function extractVerses(pageText) {
       // ★ الأقواس التي تحتضن البيت ليست منه. ★
       //   كتب الشواهد تضع الشاهد بين قوسين: «(وهل يعمن من كان … أحوال)»
       //   وقوسُ الفتح كان يبقى في النصّ فيُعرض ويُفسد المطابقة.
-      const trim = (t) => t.replace(/^[\s(\[«"“،]+/, '').replace(/[\s)\]»"”،.]+$/, '').trim();
+      // ★ ولا يُقصّ قوسٌ له قرينٌ في الشطر نفسه. ★
+      //   «وقُولا هوَ المرءُ الذي لا [خَليلَهُ] ... أضاعَ» — كان القصُّ يبتلع
+      //   المعقوفةَ الخاتمة (لأنها في آخر الشطر) ويُبقي الفاتحة، فيُعرض البيت
+      //   مكسورًا: «لا [خَليلَهُ ... أضاعَ». والمعقوفتان هنا من المطبوع:
+      //   روايةٌ اختارها المحقّق، فلا تُمحى ولا تُبتر.
+      const trim = (t) => {
+        let out = String(t);
+        out = out.replace(/^[\s(\[«"“،]+/, (m) => {
+          // ما كان له قرينٌ في بقيّة الشطر يُترك كما هو
+          const rest = out.slice(m.length);
+          return [...m].filter((c) => {
+            if (c === '[') return rest.includes(']');
+            if (c === '(') return rest.includes(')');
+            return false;
+          }).join('');
+        });
+        out = out.replace(/[\s)\]»"”،.]+$/, (m, at) => {
+          const head = out.slice(0, at);
+          return [...m].filter((c) => {
+            if (c === ']') return head.includes('[');
+            if (c === ')') return head.includes('(');
+            return false;
+          }).join('');
+        });
+        return out.trim();
+      };
+
+      // ★ المعقوفتان تُطبقان على البيت كلِّه حكمٌ لا زينة: ★ المحقّق يقول بهما
+      //   إن البيت زائدٌ أو مشكوكٌ في نسبته («٢١ - [فَتى لا تَراهُ النّابُ …]»
+      //   في ديوان ليلى الأخيلية). وقصُّهما صامتًا إخفاءُ حكمٍ علميّ، لا تنظيفُ نصّ.
+      const doubted = /^\s*(?:[\u0660-\u0669\u06F0-\u06F90-9]{1,3}\s*[-–—.)]?\s*)?\[/.test(before)
+        && /\]\s*$/.test(after.trim());
+
       const tadweer = detectTadweer(trim(sadr), trim(ajz));
       const cleanSadr = trim(sadr);
       const cleanAjz = trim(ajz);
       out.push({
+        doubted,
+        footnote: footMark,
         sadr: cleanSadr,
         ajz: cleanAjz,
         text: `${cleanSadr} ... ${cleanAjz}`,

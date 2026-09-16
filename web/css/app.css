@@ -269,3 +269,13 @@ button.stopping{background:var(--danger)}
 .limits h2{margin:0 0 10px;font-size:1rem}
 .limits ul{margin:0;padding-inline-start:1.2em;line-height:2;color:var(--muted);font-size:.9rem}
 .limits kbd{background:var(--accent-soft);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+
+/* ما كتبه الكتاب نفسه عن القصيدة — بحرُها وغرضُها ومناسبتُها */
+.said{margin:0 0 6px;font-size:.9rem;color:var(--ink);opacity:.85}
+.said .hint{opacity:.7}
+/* شرحُ الغريب من حاشية المحقّق */
+.glosses{margin:6px 0}
+.glosses summary{cursor:pointer;color:var(--accent);font-size:.88rem}
+.glosses dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:.9rem}
+.glosses dt{font-weight:700;color:var(--ink)}
+.glosses dd{margin:0;color:var(--muted)}

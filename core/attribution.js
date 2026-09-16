@@ -12,6 +12,7 @@
 // وما لم يكن له سبب — لا يُنسب. «غير معروف» جوابٌ صادق، والتخمين ليس جوابًا.
 
 import { normalize, stripDiacritics } from './normalize.js';
+import { meterFromHeading, occasionOf } from './apparatus.js';
 
 const SEPARATOR = /\s(?:\.{3}|…|\*{3})\s/;
 
@@ -57,7 +58,33 @@ const LAM_FALSE = new Set([
 // ما يقطع اسم القائل: صفةٌ أو ظرفٌ أو دعاءٌ أو تشكيك — لا جزءٌ من الاسم.
 // و«وقال زهير بن خباب الكلبي ★ وكان من المعمرين ★:» كان يُقطع عند حدّ الكلمات
 // الستّ فيخرج «زهير بن خباب الكلبي وكان» — اسمٌ مبتورٌ لا يطابق ترجمةً قطّ.
-const NAME_STOP = /(?:^|\s)(?:في|من|عن|حين|لما|يصف|يمدح|يرثي|وهو|وهي|رحمه|رضي|قوله|أيضا|وقد|إذ|والله|أعلم|اعلم|تعالى|عليه|وقيل|ولعله|أظن|اظن|على|وكان|كان|وكانت|يقول|أنشد|حيث|ثم|فلما|لمّا|كيف|ماذا|أين|متى|لماذا|هل|إنما|إنه|أنه|أراد|يريد|معناه|أي|التي|الذي|اللتي|حيثُ)(?:\s|$)/;
+// ★ وأفعالُ القطع تُبنى على أصلها لا على صورةٍ منها. ★
+//   «وأنشد ★يرثيه★ أيضًا:» و«وأنشد لبيد ★يخاطب★ امرأته:» في ديوان لبيد أخرجتا
+//   شاعرَين اسمُهما «يرثيه» و«لبيد يخاطب امرأته» — لأن القائمة كانت تحفظ
+//   «يرثي» و«يمدح» صورتين مفردتين، فنفذ منها ما لحقته هاء، وما لم يُذكر أصلًا.
+//   واسمٌ مختلَقٌ كهذا لا يطابق ترجمةً قطّ، فيخرج البيت بلا عصرٍ ولا تأريخ.
+const STOP_VERBS = [
+  'يرثي', 'يمدح', 'يهجو', 'يصف', 'يخاطب', 'يعاتب', 'يعتذر', 'ينعى', 'ينعي',
+  'يفتخر', 'يتغزل', 'يجيب', 'يرد', 'يذكر', 'يعني', 'يريد', 'يقول', 'ينشد',
+  'يكتب', 'يشكو', 'يوصي', 'يعزي', 'يهنئ', 'يستعطف', 'يسأل', 'أراد', 'أنشد',
+  'قال', 'كتب', 'أجاب', 'رثى', 'مدح', 'هجا', 'خاطب', 'وصف',
+];
+// اللواحق: ضمائرُ المفعول تلتصق بالفعل («يرثيه» · «يخاطبها» · «هجاهم»)
+const STOP_SUFFIX = '(?:ها|هما|هم|هن|هُ|ه|ني|نا|كم|ك)?';
+const STOP_WORDS = [
+  'في', 'من', 'عن', 'حين', 'لما', 'وهو', 'وهي', 'رحمه', 'رضي', 'قوله', 'أيضا',
+  'وقد', 'إذ', 'والله', 'أعلم', 'اعلم', 'تعالى', 'عليه', 'وقيل', 'ولعله',
+  'أظن', 'اظن', 'على', 'وكان', 'كان', 'وكانت', 'حيث', 'ثم', 'فلما', 'لمّا',
+  'كيف', 'ماذا', 'أين', 'متى', 'لماذا', 'هل', 'إنما', 'إنه', 'أنه', 'معناه',
+  'أي', 'التي', 'الذي', 'اللتي', 'حيثُ', 'فيما', 'بما', 'وله',
+];
+
+const NAME_STOP = new RegExp(
+  '(?:^|\\s)(?:'
+  + `(?:و|ف|ل)?(?:${STOP_VERBS.join('|')})${STOP_SUFFIX}`
+  + `|${STOP_WORDS.join('|')}`
+  + ')(?:\\s|$)',
+);
 
 const MAX_NAME_WORDS = 6;
 
@@ -283,6 +310,10 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
 
   let current = null;        // { name } أو null للمجهول
   let currentSource = null;
+  // ★ ما كتبه الكتاب فوق القصيدة: بحرُها ومناسبتُها. ★ وهما يسريان على أبياتها
+  //   حتى تبدأ قصيدةٌ أخرى — كما تسري النسبة.
+  let meter = null;
+  let occasion = null;
   const result = [];
 
   // ★ القصيدة لا تنتهي حيث تنتهي الصفحة. ★
@@ -303,6 +334,17 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
     // فلا نقرأ «ما قبل الفاصل» (فذاك الشطر الأول نفسه)، بل «ما قبل البيت» وحده.
     // وإلا قرأنا لام «لمن تعبا» لامَ نسبة، فحرمنا البيت إرثه من شوقي.
     const prose = hasVerse ? line.slice(0, versesHere[0].column) : line;
+
+    // ★ «فتىً كان [الطويل]» — الديوان يكتب بحرَ قصيدته فوقها. ★
+    //   وهذا مصدرٌ قاطعٌ يُغني عن التقطيع الآليّ الذي لا يفصل بين البحور.
+    //   وعنوانُ قصيدةٍ جديدة يقطع بحرَ ما قبلها ومناسبتَه.
+    if (!hasVerse) {
+      const found = meterFromHeading(line);
+      if (found) { meter = found; occasion = null; }
+      const occ = occasionOf(line);
+      if (occ) occasion = occ;
+    }
+
     const read = prose.trim() ? readAttributionLine(prose, { requireColon: true }) : null;
 
     if (read) {
@@ -326,6 +368,9 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
         const anonymous = !ownVerse && currentSource === 'anonymous';
         result.push({
           ...v,
+          meter, meterSource: meter ? 'book' : null,
+          occasion: occasion?.occasion ?? null,
+          purpose: occasion?.purpose ?? null,
           poet: current ?? (anonymous || !ownVerse ? null : bookPoet) ?? null,
           poetSource: current ? currentSource
             : (anonymous ? 'anonymous' : (ownVerse ? (v.numbered ? 'book-numbered' : 'book') : null)),

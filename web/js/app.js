@@ -154,6 +154,11 @@ function card(v, rank = 0) {
     ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer" title="${esc(s.urlNote ?? '')}">افتح المصدر ↗</a>`
     : '';
 
+  // ★ المعقوفتان حكمُ المحقّق لا زينة ★ — وقصُّهما صامتًا إخفاءُ حكمٍ علميّ
+  const doubted = v.doubted
+    ? '<p class="caveat">وردَ بين معقوفتين في المطبوع — وهي علامةُ المحقّق على أن البيت'
+      + ' زائدٌ أو مشكوكٌ في نسبته، لا زيادةَ منّا.</p>' : '';
+
   const caveat = s.trustNote ? `<p class="caveat">${esc(s.trustNote)}</p>` : '';
   const pairing = s.pairing === 'lines'
     ? '<p class="caveat">قُرئ بقرن الأسطر المتّفقة الرويّ، لا بفاصلٍ صريحٍ بين الشطرين.</p>' : '';
@@ -166,6 +171,30 @@ function card(v, rank = 0) {
         v.similarity ? ` (${ar(String(Math.round(v.similarity * 100)))}٪)` : ''}</span>` : '';
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
+
+  // ★★ ما كتبه الكتابُ نفسه عن القصيدة: بحرُها وغرضُها ومناسبتُها. ★★
+  //   وكنتُ أمسِ أعتذر عن البحر لأن التقطيع الآليّ لا يفصل بين البحور —
+  //   والديوانُ يكتبه فوق قصيدته: «فتىً كان [الطويل]». فالمصدرُ في النصّ.
+  const said = [];
+  if (v.meter) said.push(`البحر: ${esc(v.meter)}`);
+  if (v.purpose) said.push(`الغرض: ${esc(v.purpose)}`);
+  const context = said.length || v.occasion
+    ? `<p class="said">${said.join(' · ')}${v.occasion ? `${said.length ? ' · ' : ''}قاله ${esc(v.occasion)}` : ''}`
+      + '<span class="hint"> — من الكتاب نفسه</span></p>'
+    : '';
+
+  // ★ شرحُ الغريب من حاشية المحقّق ★ — وهو أوّلُ ما يحتاجه الباحث في الصور
+  //   الشعرية، وكان يُطرح مع الحاشية طرحًا.
+  const glosses = v.glosses?.length
+    ? '<details class="glosses"><summary>شرحُ غريبه (من حاشية المحقّق)</summary><dl>'
+      + v.glosses.map((g) => `<dt>${esc(g.word)}</dt><dd>${esc(g.gloss)}</dd>`).join('')
+      + '</dl></details>'
+    : '';
+
+  // ★ الروايةُ الأخرى مصرَّحٌ بها في الحاشية ★ — واختلافُ الرواية مادّةُ بحث
+  const variant = v.variant
+    ? `<p class="src">وفي روايةٍ: <bdi>${esc(v.variant)}</bdi><span class="hint"> — من حاشية المحقّق</span></p>`
+    : '';
 
   // ★ القافية والرويّ — أوّلُ ما يكتبه الباحث في بطاقته، ويُحسبان حسابًا. ★
   //   والمعارضة (النظمُ على بحر قصيدةٍ ورويِّها) بابٌ أصيل، ومدخلُها الرويّ.
@@ -228,7 +257,7 @@ function card(v, rank = 0) {
       ${nabati}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
-    ${prosody}${alsoIn}${disputed}${caveat}${pairing}${dated}${via}
+    ${context}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}
     <div class="actions">
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>

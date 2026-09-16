@@ -145,6 +145,15 @@ export function toRecord(verse, id) {
     q: s.pageId ?? null,
     c: s.category ?? null,
     r: verse.register === 'nabati' ? 1 : 0,
+    // ★ حكمُ المحقّق بالشكّ في البيت ★ — معقوفتان تُطبقان على البيت كلِّه
+    w: verse.doubted ? 1 : 0,
+    // ★ ما كتبه الكتاب نفسه: بحرُ القصيدة وغرضُها ومناسبتُها ★ — لا تخمين
+    z: verse.meter ?? null,
+    j: verse.purpose ?? null,
+    o: verse.occasion ?? null,
+    // شرحُ الغريب من حاشية المحقّق، وروايتُه الأخرى
+    f: verse.glosses?.length ? verse.glosses.map((g) => [g.word, g.gloss]) : null,
+    v: verse.variant ?? null,
     l: verse.lifespanSource?.label ?? null,   // من أين جاءت سنة الوفاة
     // n: عددُ الكتب التي ورد فيها · x: أسماءٌ أخرى نُسب إليها · y: كتبٌ أخرى
     // تُضاف عند التكرار وحده، فلا تزيد حجمَ البيت الذي ورد مرّةً واحدة.
@@ -168,6 +177,13 @@ export function fromRecord(rec) {
     era: eraOf(death),
     lifespanSource: rec.l ? { kind: 'index', label: rec.l } : null,
     register: rec.r ? 'nabati' : 'fasih',
+    doubted: Boolean(rec.w),
+    meter: rec.z ?? null,
+    meterSource: rec.z ? 'book' : null,
+    purpose: rec.j ?? null,
+    occasion: rec.o ?? null,
+    glosses: rec.f?.map(([word, gloss]) => ({ word, gloss })) ?? null,
+    variant: rec.v ?? null,
     // ★ ورودُ البيت في كتبٍ عدّة خبرٌ عنه لا تكرارٌ يُطرح. ★
     occurrences: rec.n ?? 1,
     // أرقامُ الأبيات الموافقة في المعنى، محسوبةً يوم الفهرسة
@@ -212,6 +228,16 @@ function mergeOccurrence(rec, v) {
       if (!rec.x.some((o) => normalize(o) === normalize(poet))) rec.x.push(poet);
     }
   }
+
+  // ★ ما سكت عنه الأوّلُ يُؤخذ من الثاني. ★
+  //   نسخةٌ من «شرح الفارضي» بلا بحرٍ ولا شرحٍ، ونسخةٌ من ديوان صاحبه فيها
+  //   بحرُ القصيدة وغرضُها وشرحُ غريبها — وكان الفهرس يُبقي الأولى ويطرح
+  //   الثانية، فيضيع ما لا يُعوَّض. والنقصُ يُملأ ولا يُبدَّل الموجود.
+  if (!rec.z && v.meter) rec.z = v.meter;
+  if (!rec.j && v.purpose) rec.j = v.purpose;
+  if (!rec.o && v.occasion) rec.o = v.occasion;
+  if (!rec.v && v.variant) rec.v = v.variant;
+  if (!rec.f?.length && v.glosses?.length) rec.f = v.glosses.map((g) => [g.word, g.gloss]);
 
   const book = v.source?.bookName;
   if (book) {
