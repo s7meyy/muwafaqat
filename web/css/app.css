@@ -182,3 +182,4 @@ button{min-height:44px}
 .fixed-by-you{color:var(--info);font-size:.84rem}
 .badge.t-mudawwar{color:var(--muted)}
 button.stopping{background:var(--danger)}
+.hint.warn{color:var(--warn)}

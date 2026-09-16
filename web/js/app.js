@@ -19,6 +19,12 @@ import { saved, rejected, corrections, history, verseToText, exportText, downloa
 const BRIDGE = localStorage.getItem('muwafaqat.bridge') || 'http://127.0.0.1:8787';
 const TOKEN = localStorage.getItem('muwafaqat.token') || '';
 
+// ★ ترويسة الطلب لا تحتمل غير اللاتينية. ★ ومفتاحٌ فيه حرفٌ عربيّ يجعل المتصفّح
+// يرمي قبل أن يُرسل شيئًا، فيسقط البحث إلى الفهرس ★ صامتًا ★ — ويظنّ صاحبه أن
+// كل شيءٍ يعمل وهو محرومٌ من المجلس والشبكة والمكتبة الحيّة.
+const TOKEN_MALFORMED = TOKEN !== '' && /[^\x20-\x7E]/.test(TOKEN);
+const SAFE_TOKEN = TOKEN_MALFORMED ? '' : TOKEN;
+
 const $ = (id) => document.getElementById(id);
 const q = $('q'), btn = $('search'), statusEl = $('status'), results = $('results'), hint = $('hint');
 
@@ -60,6 +66,14 @@ async function probeBridge() {
   reflectCapabilities();
 }
 
+/** يُقال للمستخدم إن مفتاحه هو المانع — لا أن يُترك يظنّ الجسر مغلقًا. */
+function warnAuth() {
+  hint.textContent = TOKEN_MALFORMED
+    ? 'مفتاح الجسر فيه حروفٌ غير لاتينية، والمتصفّح لا يرسله. صحّحه في muwafaqat.token.'
+    : 'الجسر يعمل لكنه يرفض مفتاحك. راجع BRIDGE_TOKEN — فما تراه من الفهرس المنشور وحده.';
+  hint.classList.add('warn');
+}
+
 function reflectCapabilities() {
   const council = $('use-council');
   const ready = Boolean(capabilities?.council);
@@ -71,7 +85,10 @@ function reflectCapabilities() {
   $('tab-image').disabled = !canImage;
   $('tab-image').title = canImage ? '' : 'تفريغ الصور غير متاحٍ الآن';
 
-  hint.textContent = capabilities ? '' : 'المكتبة الحيّة غير متاحة الآن — البحث في الفهرس المنشور وحده.';
+  hint.classList.toggle('warn', TOKEN_MALFORMED);
+  hint.textContent = TOKEN_MALFORMED
+    ? 'مفتاح الجسر فيه حروفٌ غير لاتينية، والمتصفّح لا يرسله. صحّحه في muwafaqat.token.'
+    : (capabilities ? '' : 'المكتبة الحيّة غير متاحة الآن — البحث في الفهرس المنشور وحده.');
 }
 
 // ── البطاقة ────────────────────────────────────────────────────────────────
@@ -169,7 +186,7 @@ function card(v) {
     try {
       const r = await fetch(`${BRIDGE}/v1/context`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) },
+        headers: { 'content-type': 'application/json', ...(SAFE_TOKEN ? { authorization: `Bearer ${SAFE_TOKEN}` } : {}) },
         body: JSON.stringify({ book_id: s.bookId, page_id: s.pageId, around: v.sadr ?? v.text }),
       });
       const d = await r.json();
@@ -286,11 +303,16 @@ async function fetchFor(verse, useCouncil) {
   const res = await fetch(`${BRIDGE}${endpoint}`, {
     method: 'POST',
     signal: controller?.signal,
-    headers: { 'content-type': 'application/json', ...(TOKEN ? { authorization: `Bearer ${TOKEN}` } : {}) },
+    headers: { 'content-type': 'application/json', ...(SAFE_TOKEN ? { authorization: `Bearer ${SAFE_TOKEN}` } : {}) },
     body: JSON.stringify(useCouncil ? { query: verse } : { query: verse, mode: 'near', distance: 10, limit: 20 }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) { const e = new Error(data.error ?? `تعذّر البحث (${res.status})`); e.code = data.code; throw e; }
+  if (!res.ok) {
+    const e = new Error(data.error ?? `تعذّر البحث (${res.status})`);
+    // ★ «مفتاحك مرفوض» ليس كـ«الجسر مغلق» — وخلطُهما يُخفي عن المستخدم ما يمنعه ★
+    e.code = (res.status === 401 || res.status === 403) ? 'UNAUTHORIZED' : data.code;
+    throw e;
+  }
   return data;
 }
 
@@ -322,7 +344,8 @@ async function search() {
 
   // ★ الأبيات المتعددة تُبحث بيتًا بيتًا وتُجمع — كانت تُبحث نصًّا واحدًا فتُخفق ★
   const merged = new Map();
-  let pagesRead = 0, rejectedCount = 0, anyCouncil = null, anyWeb = null, bridgeFailed = false;
+  let pagesRead = 0, rejectedCount = 0, anyCouncil = null, anyWeb = null;
+  let bridgeFailed = false, authFailed = TOKEN_MALFORMED;
 
   for (const [i, verse] of verses.entries()) {
     setStatus(verses.length > 1
@@ -336,7 +359,8 @@ async function search() {
       try { data = await fetchFor(verse, useCouncil); }
       catch (e) {
         if (e.name === 'AbortError') break;
-        if (e.code === 'NO_COUNCIL') { try { data = await fetchFor(verse, false); } catch { /* يسقط للفهرس */ } }
+        if (e.code === 'UNAUTHORIZED') authFailed = true;
+        else if (e.code === 'NO_COUNCIL') { try { data = await fetchFor(verse, false); } catch { /* يسقط للفهرس */ } }
         if (!data) bridgeFailed = true;
       }
     }
@@ -371,6 +395,7 @@ async function search() {
   if (stopped && !lastVerses.length) { setStatus('أُوقف البحث.', 'warn'); return; }
 
   if (!lastVerses.length) {
+    if (authFailed) { warnAuth(); return; }
     const why = (bridgeFailed || !capabilities)
       ? ' والمكتبة الحيّة غير متاحة الآن، فلم يُبحث إلا في الفهرس المنشور.' : '';
     // ★ لا تُركَّب الجملة على ناتج العدد: «قُرئت لم تُقرأ صفحة» كسرٌ ظاهر ★
@@ -387,6 +412,7 @@ async function search() {
   if (bridgeFailed || !capabilities) bits.push(' · من الفهرس المنشور وحده');
   if (stopped) bits.push(' · أُوقف البحث قبل تمامه');
   renderVerses(bits.join(''));
+  if (authFailed) warnAuth();
 }
 
 // ── التبويبان ──────────────────────────────────────────────────────────────
@@ -419,7 +445,7 @@ for (const c of document.querySelectorAll('.trust-filter')) c.addEventListener('
 $('sort')?.addEventListener('change', () => renderVerses());
 
 installApproval({
-  bridge: BRIDGE, token: TOKEN,
+  bridge: BRIDGE, token: SAFE_TOKEN,
   onApproved: (text) => { imageApproved = true; q.value = text; refreshSearchButton(); },
   onUnapproved: () => { imageApproved = false; refreshSearchButton(); },
 });

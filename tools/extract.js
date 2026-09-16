@@ -36,9 +36,15 @@ function parseArgs(argv) {
   return out;
 }
 
+const MAX_ATTEMPTS = 3;
+
 function loadState() {
-  try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); }
-  catch { return { doneBooks: [], verses: 0, pages: 0 }; }
+  try {
+    const st = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+    st.attempts ??= {};
+    st.givenUp ??= [];
+    return st;
+  } catch { return { doneBooks: [], verses: 0, pages: 0, attempts: {}, givenUp: [] }; }
 }
 function saveState(s) {
   fs.mkdirSync(path.dirname(STATE), { recursive: true });
@@ -105,7 +111,10 @@ async function main() {
   for (const c of categories) allBooks.push(...(await booksIn(c)).map((b) => ({ ...b, category_id: c })));
   if (args.limitBooks) allBooks = allBooks.slice(0, Number(args.limitBooks));
 
-  const todo = allBooks.filter((b) => !done.has(b.book_id));
+  // الكتاب الذي فشل ثلاثًا يُترك ويُذكر — لا يُعاد إليه في كل تشغيلٍ أبدًا
+  const givenUp = new Set(state.givenUp);
+  const todo = allBooks.filter((b) => !done.has(b.book_id) && !givenUp.has(b.book_id));
+  if (givenUp.size) log(`(${toArabicDigits(String(givenUp.size))} كتابًا تُرك بعد ${toArabicDigits(String(MAX_ATTEMPTS))} محاولات)`);
   log(`كتبٌ في النطاق: ${toArabicDigits(String(allBooks.length))} · بقي منها: ${toArabicDigits(String(todo.length))}`);
 
   const incomplete = [];
@@ -113,6 +122,11 @@ async function main() {
   for (const [n, book] of todo.entries()) {
     let bookVerses = 0, bookPages = 0;
     readFailed = false;
+
+    // ★ موضعُ الكتابة قبل الكتاب — إليه نرجع إن انقطعت قراءته. ★
+    //   وإلّا أُعيدت أبياتُه في التشغيل التالي فتكرّرت في الملف. (الفهرسة
+    //   تُزيل المكرَّر، لكن الملف ينتفخ بلا فائدة في عملٍ يمتدّ ساعات.)
+    const mark = fs.existsSync(OUT) ? fs.statSync(OUT).size : 0;
     for await (const page of pagesOf(book.book_id)) {
       const body = page?.body ?? '';
       bookPages++;
@@ -137,15 +151,32 @@ async function main() {
     //   (خادم الشاملة قد يموت في منتصف كتاب، والعميل يعيد تشغيله فيمضي
     //    العمل كأن شيئًا لم يكن، والكتاب مكتوبٌ في المنجَز وهو فارغ.)
     const broken = readFailed || bookPages === 0;
-    if (broken) incomplete.push({ id: book.book_id, name: book.book_name, pages: bookPages });
-    else state.doneBooks.push(book.book_id);
+    if (broken) {
+      // نرجع بالملف إلى ما كان قبل الكتاب، فلا يُكتب شطرُه مرّتين
+      await new Promise((r) => sink.write('', r));
+      try { fs.truncateSync(OUT, mark); } catch { /* الملف قد يكون جديدًا */ }
+      bookVerses = 0;
+
+      const tries = (state.attempts[book.book_id] ?? 0) + 1;
+      state.attempts[book.book_id] = tries;
+      if (tries >= MAX_ATTEMPTS) state.givenUp.push(book.book_id);
+      incomplete.push({ id: book.book_id, name: book.book_name, tries, gaveUp: tries >= MAX_ATTEMPTS });
+    } else {
+      state.doneBooks.push(book.book_id);
+      delete state.attempts[book.book_id];
+    }
 
     state.verses += bookVerses;
     state.pages += bookPages;
     state.incomplete = incomplete.map((b) => b.id);
     saveState(state);
+    const tries = state.attempts[book.book_id] ?? 0;
     log(`[${toArabicDigits(String(n + 1))}/${toArabicDigits(String(todo.length))}] ${book.book_name} — `
-      + (broken ? '★ انقطعت قراءته، وسيُعاد إليه' : `${toArabicDigits(String(bookVerses))} بيتًا من ${toArabicDigits(String(bookPages))} صفحة`));
+      + (broken
+        ? (tries >= MAX_ATTEMPTS
+          ? `★ فشل ${toArabicDigits(String(tries))} مرّات، فتُرك`
+          : `★ انقطعت قراءته (المحاولة ${toArabicDigits(String(tries))})، وسيُعاد إليه`)
+        : `${toArabicDigits(String(bookVerses))} بيتًا من ${toArabicDigits(String(bookPages))} صفحة`));
   }
 
   sink.end();
@@ -155,8 +186,16 @@ async function main() {
 
   if (incomplete.length) {
     log('');
-    log(`★ ${toArabicDigits(String(incomplete.length))} كتابًا لم تتمّ قراءته — أعِد التشغيل ليُستأنف:`);
-    for (const b of incomplete) log(`   - ${b.name} (${toArabicDigits(String(b.id))})`);
+    const retry = incomplete.filter((b) => !b.gaveUp);
+    const dropped = incomplete.filter((b) => b.gaveUp);
+    if (retry.length) {
+      log(`★ ${toArabicDigits(String(retry.length))} كتابًا لم تتمّ قراءته — أعِد التشغيل ليُستأنف:`);
+      for (const b of retry) log(`   - ${b.name} (${toArabicDigits(String(b.id))})`);
+    }
+    if (dropped.length) {
+      log(`★ ${toArabicDigits(String(dropped.length))} كتابًا تُرك بعد ${toArabicDigits(String(MAX_ATTEMPTS))} محاولات:`);
+      for (const b of dropped) log(`   - ${b.name} (${toArabicDigits(String(b.id))})`);
+    }
   }
   client.stop();
 }
