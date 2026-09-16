@@ -15,6 +15,7 @@ import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/heal
 import { matchReason, sharedWords, markShared, isMeaningful } from '../core/why.js';
 import { citationOf } from '../core/citation.js';
 import { researchHtml, csv, bibtexAll, byOldest } from '../core/export.js';
+import { rhyme, scan, meterOf } from '../core/prosody.js';
 import { gate } from '../core/verify.js';
 import { dedupe, similarity } from '../core/dedupe.js';
 import { eraOf, hijriToGregorian, lifespanLabel } from '../core/eras.js';
@@ -1080,6 +1081,30 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   ok('والصدر والعجز منفصلان', /"بقدر الكد تكتسب المعالي"/.test(table));
 
   ok('وBibTeX لكل بيت', bibtexAll(items).match(/@incollection/g)?.length === 2);
+}
+
+// ── القافية والتقطيع ──────────────────────────────────────────────────────
+{
+  eq('الرويّ آخرُ حرفٍ صحيح', rhyme('وكل نعيم لا محالة زائلُ')?.rawi, 'ل');
+  eq('وحرفُ المدّ بعده وصلٌ لا رويّ', rhyme('ولكن تؤخذ الدنيا غلابا')?.tail, 'با');
+  eq('ورويُّه الباء', rhyme('ولكن تؤخذ الدنيا غلابا')?.rawi, 'ب');
+  eq('و«ترتيلا» رويُّها اللام', rhyme('ثم رتلت ذكركم ترتيلا')?.rawi, 'ل');
+  ok('وما قصُر عن حرفين لا قافيةَ له', rhyme('و') === null);
+
+  const s1 = scan('كَلَامُنَا لَفْظٌ مُفِيدٌ كاستَقِم ... واسْمٌ وفِعْلٌ ثمَّ حَرفٌ الكَلِم');
+  ok('التقطيع حركةٌ وسكون', /^[10?]+$/.test(s1.pattern));
+  ok('★ وما لم يضبطه النصّ يُترك «؟» ولا يُفرض عليه حكم', s1.pattern.includes('?'),
+     'فرضُ الحركة على حرفٍ ساكنٍ يزيح النمط كلَّه فيخرج البيت عن كلّ بحر');
+  ok('والمشكول أعلى ضبطًا من غيره',
+     s1.vocalized > scan('كلامنا لفظ مفيد كاستقم ... واسم وفعل ثم حرف الكلم').vocalized);
+
+  // ★ ولا يُعلَن بحرٌ لم يقم عليه دليل ★
+  const m = meterOf('كَلَامُنَا لَفْظٌ مُفِيدٌ كاستَقِم ... واسْمٌ وفِعْلٌ ثمَّ حَرفٌ الكَلِم');
+  eq('★ فالبحر لا يُعلَن', m.bahr, null,
+     'قِيس على سبعة أبياتٍ حقيقية فأصاب «الأقرب» في أربعة، والفرقُ بين الأول والثاني ٠٫٠١ — '
+     + 'وإعلانُ بحرٍ خاطئٍ في بطاقةٍ يَنسخها باحثٌ إلى رسالته أسوأُ من السكوت');
+  ok('ويُقال سببُ السكوت', /لم يُحكم ببحر|غير مشكول/.test(m.reason));
+  ok('ويبقى الأقربُ للاستئناس', typeof m.closest === 'string');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

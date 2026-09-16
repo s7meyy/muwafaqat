@@ -11,6 +11,7 @@
 import { toArabicDigits as ar, fingerprint, stripDiacritics } from '../../core/normalize.js';
 import { matchReason, markShared } from '../../core/why.js';
 import { citationOf } from '../../core/citation.js';
+import { rhyme, meterOf } from '../../core/prosody.js';
 import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic } from '../../core/input.js';
@@ -37,6 +38,16 @@ const SAFE_TOKEN = TOKEN_MALFORMED ? '' : TOKEN;
 const TASHKEEL_KEY = 'muwafaqat.tashkeel';
 let showTashkeel = localStorage.getItem(TASHKEEL_KEY) !== 'off';
 export const shaped = (t) => (showTashkeel ? String(t ?? '') : stripDiacritics(String(t ?? '')));
+
+// أسماءُ الحروف كما يكتبها العروضيّون: «رويّ الميم» لا «رويّ م»
+const HARF = {
+  ء: 'الهمزة', ب: 'الباء', ت: 'التاء', ث: 'الثاء', ج: 'الجيم', ح: 'الحاء', خ: 'الخاء',
+  د: 'الدال', ذ: 'الذال', ر: 'الراء', ز: 'الزاي', س: 'السين', ش: 'الشين', ص: 'الصاد',
+  ض: 'الضاد', ط: 'الطاء', ظ: 'الظاء', ع: 'العين', غ: 'الغين', ف: 'الفاء', ق: 'القاف',
+  ك: 'الكاف', ل: 'اللام', م: 'الميم', ن: 'النون', ه: 'الهاء', و: 'الواو', ي: 'الياء',
+  ة: 'التاء', ى: 'الألف', ا: 'الألف',
+};
+const harfName = (c) => HARF[c] ?? c;
 
 const $ = (id) => document.getElementById(id);
 const q = $('q'), btn = $('search'), statusEl = $('status'), results = $('results'), hint = $('hint');
@@ -153,6 +164,21 @@ function card(v, rank = 0) {
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
 
+  // ★ القافية والرويّ — أوّلُ ما يكتبه الباحث في بطاقته، ويُحسبان حسابًا. ★
+  //   والمعارضة (النظمُ على بحر قصيدةٍ ورويِّها) بابٌ أصيل، ومدخلُها الرويّ.
+  const qafiya = rhyme(v.text);
+  const scanned = meterOf(v.text);
+  const prosody = qafiya
+    ? `<div class="src prosody">القافية: رويُّ ${esc(harfName(qafiya.rawi))}`
+      + (qafiya.tail.length > 1 ? ` (ـ${esc(qafiya.tail)})` : '')
+      + `<details><summary>التقطيع</summary>`
+      + `<span class="pattern" dir="ltr">${esc(scanned.pattern || '—')}</span>`
+      + `<span class="hint"> (١ متحرّك · ٠ ساكن · ؟ لم يضبطه النصّ)</span>`
+      + `<span class="hint"> — ${esc(scanned.reason ?? '')}`
+      + (scanned.closest ? `، وأقربُ الأنماط ${esc(scanned.closest)} (استئناسًا لا حكمًا)` : '')
+      + `</span></details></div>`
+    : '';
+
   const ls = v.lifespanSource;
   const dated = ls
     ? `<p class="src">التأريخ من ${esc(ls.label)}${ls.printedPage ? ` ص ${ar(String(ls.printedPage))}` : ''}${
@@ -199,7 +225,7 @@ function card(v, rank = 0) {
       ${nabati}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
-    ${alsoIn}${disputed}${caveat}${pairing}${dated}${via}
+    ${prosody}${alsoIn}${disputed}${caveat}${pairing}${dated}${via}
     <div class="actions">
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>
