@@ -5,6 +5,8 @@
 // تُجلب مرّتين. والمتصفّح لا ينزّل الفهرس كله — شظايا كلمات بحثه وحدها.
 
 import { searchIndex, shardName, neighborsOf, verseBucketOf, fromRecord } from '../../core/verse-index.js';
+import { expandByMeaning } from '../../core/meaning.js';
+import { imagesOf } from '../../core/imagery.js';
 
 const BASE = 'index';
 const cache = new Map();
@@ -42,9 +44,14 @@ export async function searchStatic(query, { limit = 20, excludeVerse = null } = 
     limit, excludeVerse: excludeVerse ?? query,
     tokenShards: meta.tokenShards, verseShards: meta.verseShards,
   });
+  // ★ ما بلغه اللفظُ وحده لا يكفي: ★ التجربة أخرجت لبيت لبيدٍ في فناء الدنيا
+  //   ثمانيةَ أبياتٍ جامعُها لفظُ «إلا»، وفي المكتبة «إنّما الدنيا كرؤيا ساعة».
+  //   فيُوسَّع السؤالُ بإخوة ألفاظه في المعنى، وبصورته الشعرية — ولا يُختلق بيت.
+  const extra = await meaningAndImagery(query, meta, new Set(verses.map((v) => v.text)));
+
   return {
     query,
-    verses: verses.map((v) => ({
+    verses: [...verses, ...extra].map((v) => ({
       ...v,
       // ★ الفهرس مبنيٌّ من كتبٍ محقَّقة، ودليلُه أنه اُستخرج منها — لا بحثٌ حيّ
       evidence: { documentId: `index:${v.source.bookId}:${v.source.pageId}`, matched: 'index' },
@@ -112,6 +119,49 @@ export async function versesByIds(ids = []) {
   for (const id of ids) {
     const rec = stores.get(verseBucketOf(id, meta.verseShards))?.[id];
     if (rec) out.push(fromRecord(rec));
+  }
+  return out;
+}
+
+const FIELD_LIMIT = 8;
+const IMAGE_LIMIT = 8;
+
+/**
+ * ★ توسيعُ السؤال: بالمعنى وبالصورة. ★
+ * ولا يُدخل بيتًا من خارج الفهرس — كلُّ ما يعود منقولٌ من كتابه كما هو،
+ * ويُوسَم بالطريق الذي جاء منه فيراه الباحث ويحكم عليه.
+ */
+async function meaningAndImagery(query, meta, seen) {
+  const out = [];
+  const opts = { tokenShards: meta.tokenShards, verseShards: meta.verseShards };
+
+  // (١) حقولُ المعنى — إخوةُ اللفظ في الدلالة
+  for (const { field, terms } of expandByMeaning(query)) {
+    let found = [];
+    try {
+      ({ verses: found } = await searchIndex(terms.join(' '), loadShard, {
+        ...opts, limit: FIELD_LIMIT, excludeVerse: query,
+      }));
+    } catch { /* شظيّةٌ لم تُجلب */ }
+    for (const v of found) {
+      if (seen.has(v.text)) continue;
+      seen.add(v.text);
+      out.push({ ...v, viaField: field, matchedQueries: [`توسيع المعنى: ${field}`] });
+    }
+  }
+
+  // (٢) الصورةُ الشعرية — يُقرأ معجمُ الصور المنشور
+  const wanted = new Set(imagesOf(query).map((i) => i.label));
+  if (wanted.size) {
+    const images = await imageryIndex();
+    const ids = [];
+    for (const g of images) if (wanted.has(g.label)) ids.push(...g.ids.slice(0, IMAGE_LIMIT));
+    for (const v of await versesByIds([...new Set(ids)])) {
+      if (seen.has(v.text)) continue;
+      seen.add(v.text);
+      const label = imagesOf(v.text).find((i) => wanted.has(i.label))?.label ?? null;
+      out.push({ ...v, viaImage: label, matchedQueries: [`الصورة: ${label ?? ''}`] });
+    }
   }
   return out;
 }

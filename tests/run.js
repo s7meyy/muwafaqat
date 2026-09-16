@@ -28,6 +28,7 @@ import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
 import { missingCategories, categoryName } from '../core/categories.js';
 import { imagesOf, buildImageryIndex } from '../core/imagery.js';
+import { fieldsOf, expandByMeaning } from '../core/meaning.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -402,7 +403,13 @@ ok('والعامّة تُقبل', !isPrivateAddress('8.8.8.8') && !isPrivateAddr
   const built = buildIndex(sample);
   eq('★ المكرَّر لا يُفهرس مرّتين', built.meta.verses, 3);
   ok('حروف المعاني لا تُفهرس', !indexTokens('من في على الدنيا').includes('في'));
-  ok('والكلمة القصيرة كذلك', !indexTokens('لم يد به').includes('يد'));
+  // ★ وقد كان الحدُّ ثلاثةَ أحرفٍ فأسقط ألفاظَ معانٍ: ★ «داء» تُطبَّع «دا»،
+  //   و«يد» و«دم» و«فم» — وهي عمادُ الصور («يدُه بحر»). فنزل الحدُّ إلى حرفين،
+  //   والحروفُ والضمائرُ تُردّ بقائمةٍ صريحة لا بالطول.
+  ok('★ ولفظُ المعنى ذو الحرفين يُفهرس', indexTokens('لم يد به').includes('يد'),
+     'سقوطُ «داء» من الفهرس أضاع معنى «الصحةُ داء» كلَّه في تجربةٍ حقيقية');
+  ok('والحرفُ الثنائيُّ لا يُفهرس', !indexTokens('لم يد به').includes('لم'));
+  ok('و«داء» تدخل الفهرس', indexTokens('وحسبك داء أن تصح').includes('دا'));
   ok('★ شظايا السجلّات أكثرُ من شظايا الكلمات', VERSE_SHARDS > TOKEN_SHARDS,
     'المرشَّحون يتفرّقون في شظايا السجلّات، فتكثيرُها يُصغّر ما يُجلب لكل بحث');
   eq('وبصمة الكلمة ثابتة', bucketOf('المطالب'), bucketOf('المطالب'));
@@ -1345,6 +1352,33 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   eq('ومعها مدى الزمن', idx[0].span.from, 100);
   eq('وعددُ شعرائها', idx[0].poets, 2);
   ok('وما لم يتكرّر لا يدخل المعجم', !idx.some((g) => g.vehicle === 'بحر'));
+}
+
+// ── توسيعُ المعنى بالحقول الدلالية ────────────────────────────────────────
+// ★ قياسٌ حقيقيّ: سُئل الموقع بستّة أبياتٍ على فهرسٍ من ١٢٨ بيتًا من ستّة كتب. ★
+// فكان الصوابُ في الخمسة الأُوَل ٥ من ٢٣، وبعد هذا الباب ٢٢ من ٣٥.
+{
+  eq('★ «باطل · نعيم · زائل» حقلُ فناء الدنيا',
+     fieldsOf('ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل')[0]?.field,
+     'فناء الدنيا وزوالها',
+     'ولا كلمةَ مشتركةَ بينه وبين «إنما الدنيا كرؤيا ساعة» — وهما معنًى واحد');
+
+  const expanded = expandByMeaning('ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل');
+  ok('ويُوسَّع السؤالُ بإخوة ألفاظه', expanded[0].terms.includes('الدنيا'));
+  ok('★ ولا تُعاد ألفاظُ السؤال نفسُها', !expanded[0].terms.includes('باطل'),
+     'فقد بُحث بها في الطور الأوّل');
+
+  const shot = fieldsOf('رمتني المنية بسهم لا يخطئ').map((f) => f.field);
+  ok('و«رمتني… بسهم» تفتح حقلَي الرمي والموت معًا',
+     shot.includes('الرمي والسهام') && shot.includes('الموت والمنية'));
+
+  ok('★ وما لا حقلَ له لا يُوسَّع', expandByMeaning('زقزقة العصفور فوق الغصن').length === 0,
+     'التوسيعُ توسيعُ سؤالٍ لا اختلاقُ جواب');
+
+  // ★ و«السلام عليكما» ليست من الصحة ★
+  ok('والحقولُ نُقّيت من الملتبس',
+     !fieldsOf('إلى الحول ثم اسم السلام عليكما').some((f) => f.field === 'الصحة والسقم'),
+     'كانت «سلم» تُخرج تحيّةَ «السلام عليكما» في موضع العافية');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

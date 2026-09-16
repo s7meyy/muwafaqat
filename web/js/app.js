@@ -435,7 +435,10 @@ async function emptyExplanation() {
 
 // ★ ما لم يشترك إلا في لفظٍ شائعٍ يُؤخَّر مهما كانت درجتُه ★ — فالباحث
 //   يقرأ الأوّل ويثق، ولا ينبغي أن يكون الأوّلُ مصادفةَ لفظ.
-const WEAK_LAST = (a, b) => (a.why?.kind === 'weak' ? 1 : 0) - (b.why?.kind === 'weak' ? 1 : 0);
+// ★ وترتيبُ الطرق: ★ ما بلغه المعنى أو الصورة أوثقُ موافقةً ممّا بلغه لفظٌ
+//   شائع. والباحث يقرأ الأوّل ويثق، فلا ينبغي أن يكون الأوّلُ مصادفةَ لفظ.
+const KIND_RANK = { sense: 0, image: 1, lexical: 2, field: 3, council: 4, none: 5, weak: 6 };
+const WEAK_LAST = (a, b) => (KIND_RANK[a.why?.kind] ?? 5) - (KIND_RANK[b.why?.kind] ?? 5);
 
 /** يملأ مرشِّحاتِ البحر والغرض والعصر ممّا في النتائج نفسها — لا بقائمةٍ ثابتة. */
 function fillFacets() {

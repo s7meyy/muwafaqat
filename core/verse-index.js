@@ -53,9 +53,16 @@ export const NOT_INDEXED = new Set([
   'من', 'في', 'علي', 'عن', 'الي', 'ما', 'لا', 'ان', 'قد', 'هذا', 'هذه', 'ذلك',
   'التي', 'الذي', 'كان', 'كل', 'بين', 'مع', 'او', 'ثم', 'لم', 'لن', 'هو', 'هي',
   'به', 'له', 'بها', 'وما', 'ولا', 'يا', 'ولو', 'اذا', 'كما', 'حتي', 'لكن', 'بل',
+  // حروفٌ ثنائيةٌ زِيدت حين نزل الحدُّ إلى حرفين
+  'مذ', 'اذ', 'كم', 'ثم', 'اي', 'فا', 'وا', 'لي', 'لك', 'بك', 'بي', 'هم', 'هن',
+  'كل', 'قد', 'ان', 'او', 'لم', 'لن', 'في', 'من', 'عن', 'ما', 'لا', 'هو', 'هي',
 ]);
 
-const MIN_TOKEN = 3;
+// ★ وحرفان يكفيان. ★ كان الحدُّ ثلاثةً، فسقط من الفهرس «داء» (تُطبَّع «دا»)
+//   و«دم» و«يد» و«فم» — وهي ألفاظُ معانٍ لا حروفُ مبانٍ. وقد ظهر في تجربةٍ
+//   حقيقية: بُحث عن معنى «الصحة داء» فلم يُوجد «وحسبك داءٌ أن تصحَّ وتسلما»
+//   لأن «داء» لم تدخل الفهرس أصلًا. والحروفُ والضمائرُ مردودةٌ بقائمةٍ صريحة.
+const MIN_TOKEN = 2;
 
 // ★ حدٌّ لقائمة مواضع الكلمة. ★
 //
@@ -83,6 +90,24 @@ export function stripPrefixes(word) {
     if (word.startsWith(p) && word.length - p.length >= MIN_BARE) return word.slice(p.length);
   }
   return word;
+}
+
+// ★ واللواحقُ كالسوابق: ★ ضمائرُ الملك تلتصق بآخر الكلمة فتمنع المطابقة.
+//   جولةُ تجربةٍ حقيقية: سُئل بـ«مضى الشباب» فلم يجد «ويأبى لي ★شبابي★ ما
+//   يعود» — وهما كلمةٌ واحدة. والفرقُ لاحقةُ ملكٍ حرفٌ واحد.
+const SUFFIXES = ['هما', 'كما', 'هن', 'كن', 'هم', 'كم', 'نا', 'ها', 'ه', 'ي', 'ك'];
+
+/** يُجرَّد الملحقُ إن بقي من الكلمة أربعةُ أحرفٍ فأكثر. */
+export function stripSuffixes(word) {
+  for (const x of SUFFIXES) {
+    if (word.endsWith(x) && word.length - x.length >= MIN_BARE) return word.slice(0, -x.length);
+  }
+  return word;
+}
+
+/** صورةُ الكلمة المجرَّدة من سوابقها ولواحقها معًا. */
+export function bareForm(word) {
+  return stripSuffixes(stripPrefixes(word));
 }
 
 /** بصمةٌ ثابتةٌ للكلمة ← رقم شظيّتها. ثابتةٌ عبر اللغات والأنظمة. */
@@ -120,8 +145,11 @@ export function queryGroups(text) {
     if (w.length < MIN_TOKEN || NOT_INDEXED.has(w) || seenWords.has(w)) continue;
     seenWords.add(w);
     const forms = [w];
-    const bare = stripPrefixes(w);
-    if (bare !== w && bare.length >= MIN_BARE && !NOT_INDEXED.has(bare)) forms.push(bare);
+    for (const bare of [stripPrefixes(w), bareForm(w)]) {
+      if (bare !== w && !forms.includes(bare) && bare.length >= MIN_BARE && !NOT_INDEXED.has(bare)) {
+        forms.push(bare);
+      }
+    }
     groups.push({ word: w, forms });
   }
   return groups;

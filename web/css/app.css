@@ -345,3 +345,5 @@ button.stopping{background:var(--danger)}
 #imagery-verses .card{margin-top:10px}
 .img-link{font:inherit;font-size:inherit;background:none;border:0;padding:0;
   color:var(--accent);cursor:pointer;text-decoration:underline dotted}
+.why-field{color:var(--accent)}
+.why-image{color:var(--info)}

@@ -72,6 +72,19 @@ export function isShared(word, query) {
 export function matchReason(verse, query) {
   const words = sharedWords(query, verse?.text ?? '');
 
+  // ★ بلغه توسيعُ المعنى: أخٌ للفظه في الدلالة، لا لفظُه ★
+  if (verse?.viaField) {
+    return {
+      kind: 'field',
+      label: `بلغه توسيعُ المعنى: ${verse.viaField}`
+        + (words.length ? ` (وشارك في: ${words.slice(0, 3).join(' · ')})` : ''),
+      words,
+    };
+  }
+  if (verse?.viaImage) {
+    return { kind: 'image', label: `يشترك مع بيتك في الصورة: ${verse.viaImage}`, words };
+  }
+
   if (verse?.semantic) {
     const pct = verse.similarity ? ` ${Math.round(verse.similarity * 100)}٪` : '';
     return { kind: 'sense', label: `قريبٌ من بيتك في المعنى${pct}`, words };
