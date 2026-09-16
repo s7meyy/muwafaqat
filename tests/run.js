@@ -26,7 +26,6 @@ import { diffTranscripts, disagreementCount, agreementRatio, proposedText } from
 import { countLabel, VERSE, PAGE, MATCHED_VERSE } from '../core/plural.js';
 import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
-import { looksArabic, inputKind } from '../core/input.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -37,7 +36,7 @@ import { detectRegister } from '../core/register.js';
 import { poetFromWebPage } from '../core/attribution.js';
 import { isPrivateAddress, assertPublicUrl } from '../bridge/fetch-page.js';
 import { collectFromWeb } from '../bridge/web.js';
-import { splitVerses, looksArabic } from '../core/input.js';
+import { splitVerses, looksArabic, inputKind } from '../core/input.js';
 import { shamelaUrl } from '../core/trust.js';
 import { detectTadweer } from '../core/verses.js';
 import { queryGroups } from '../core/verse-index.js';
