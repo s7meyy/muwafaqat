@@ -73,9 +73,14 @@ const MAX_POSTINGS = 3000;
 // (بلا هذا كان «التمني» لا يجد «بالتمني» — وهما في البيت نفسه.)
 const PREFIXES = ['وبال', 'فبال', 'بال', 'كال', 'فال', 'وال', 'لل', 'ال', 'و', 'ف', 'ب', 'ك', 'ل'];
 
+// ★ ولا يُجرَّد إلا ما بقي منه أربعةُ أحرفٍ فأكثر. ★
+// «المنى» لو جُرِّدت صارت «منى»، فطابقت «منّي» — وهما كلمتان لا تجمعهما صلة.
+// والتجريدُ بلا تحليلٍ صرفيّ يُصيب في الطويل ويخطئ في القصير، فيُقصر عليه.
+const MIN_BARE = 4;
+
 function stripPrefixes(word) {
   for (const p of PREFIXES) {
-    if (word.length > p.length + MIN_TOKEN - 1 && word.startsWith(p)) return word.slice(p.length);
+    if (word.startsWith(p) && word.length - p.length >= MIN_BARE) return word.slice(p.length);
   }
   return word;
 }
@@ -116,7 +121,7 @@ export function queryGroups(text) {
     seenWords.add(w);
     const forms = [w];
     const bare = stripPrefixes(w);
-    if (bare !== w && bare.length >= MIN_TOKEN && !NOT_INDEXED.has(bare)) forms.push(bare);
+    if (bare !== w && bare.length >= MIN_BARE && !NOT_INDEXED.has(bare)) forms.push(bare);
     groups.push({ word: w, forms });
   }
   return groups;
@@ -235,8 +240,20 @@ export async function searchIndex(query, load, {
   limit = 20, proximity = 12, excludeVerse = null,
   tokenShards = TOKEN_SHARDS, verseShards = VERSE_SHARDS,
 } = {}) {
-  // ★ البيت الذي سألتَ به ليس موافقةً له. ★ كان الفهرس يُعيده جوابًا لنفسه.
+  // ★ البيت الذي سألتَ به ليس موافقةً له. ★
+  //
+  // والمقارنةُ بالتطابق التامّ لا تكفي: المستخدم يلصق شطرًا أو بيتًا ناقصًا أو
+  // روايةً فيها كلمةٌ زائدة، فتختلف البصمتان ويعود إليه بيتُه جوابًا لنفسه.
+  // (سُئل بـ«ترى الناس ما سرنا يسيرون خلفنا» فكانت النتيجة الأولى البيت نفسه.)
+  // فالاستبعاد بالاحتواء: ما احتوى السؤالَ أو احتواه السؤالُ فهو هو.
   const excludeFp = excludeVerse ? fingerprint(excludeVerse) : null;
+  const isSameVerse = (text) => {
+    if (!excludeFp) return false;
+    const fp = fingerprint(text);
+    if (fp === excludeFp) return true;
+    const [a, b] = fp.length >= excludeFp.length ? [fp, excludeFp] : [excludeFp, fp];
+    return b.length >= 12 && a.includes(b);   // شطرٌ كاملٌ على الأقل، لا كلمة
+  };
   const groups = queryGroups(query);
   const terms = groups.flatMap((g) => g.forms);
   if (!groups.length) return { verses: [], terms: [], scanned: 0 };
@@ -302,7 +319,7 @@ export async function searchIndex(query, load, {
   for (const [id, hits] of candidates) {
     const rec = stores.get(verseBucketOf(id, verseShards))?.[id];
     if (!rec) continue;
-    if (excludeFp && fingerprint(rec.t) === excludeFp) continue;
+    if (isSameVerse(rec.t)) continue;
     if (!withinProximity(rec.t, terms, proximity)) continue;
     out.push({ ...fromRecord(rec), matchedTerms: hits });
     if (out.length >= limit) break;

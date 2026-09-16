@@ -142,11 +142,17 @@ export class Shamela {
   async finalize(ctx, { excludeVerse = null, queryCount = 1, env = process.env } = {}) {
     const { passed, rejectedCount } = gate(ctx.candidates, ctx.documents);
 
-    // البيت الذي سألتَ به ليس موافقةً له — فيُستبعد هو ورواياته
+    // البيت الذي سألتَ به ليس موافقةً له — فيُستبعد هو ورواياته.
+    // ★ وبالاحتواء لا بالتطابق: ★ السؤال قد يكون شطرًا منه أو روايةً ناقصة.
     const excludeFp = excludeVerse ? fingerprint(excludeVerse) : null;
-    const kept = excludeFp
-      ? passed.filter((v) => fingerprint(v.text) !== excludeFp && similarity(v.text, excludeVerse) < 0.9)
-      : passed;
+    const isSame = (text) => {
+      if (!excludeFp) return false;
+      const fp = fingerprint(text);
+      if (fp === excludeFp) return true;
+      const [a, b] = fp.length >= excludeFp.length ? [fp, excludeFp] : [excludeFp, fp];
+      return (b.length >= 12 && a.includes(b)) || similarity(text, excludeVerse) >= 0.9;
+    };
+    const kept = excludeFp ? passed.filter((v) => !isSame(v.text)) : passed;
 
     const merged = dedupe(kept);
 

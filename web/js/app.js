@@ -47,6 +47,7 @@ let searching = false;
 let imageApproved = false;
 let mode = 'text';
 let controller = null;   // لإلغاء بحثٍ طال
+let startedAt = 0;       // متى بدأ البحث — لتمييز الضغطة المكرَّرة من الإيقاف
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -242,6 +243,9 @@ function renderVerses(tail) {
   setStatus(shown.length
     ? `${countLabel(shown.length, MATCHED_VERSE)}${statusTail}`
     : (lastVerses.length ? 'كلُّ ما وُجد مُخفًى بالمرشِّح أعلاه.' : ''));
+
+  // ★ لقارئ الشاشة: البطاقة عنصرٌ له عنوان، لا كتلةٌ صامتة ★
+  results.setAttribute('aria-busy', 'false');
 }
 
 function refreshSavedBar() {
@@ -316,9 +320,16 @@ async function fetchFor(verse, useCouncil) {
   return data;
 }
 
+const DOUBLE_CLICK_GRACE = 500;
+
 async function search() {
   // ★ بحثُ المجلس قد يطول دقيقة — فزرُّ البحث يصير زرَّ إيقاف ★
-  if (searching) { controller?.abort(); return; }
+  //   لكنّ من يضغط مرّتين سريعًا يظنّ أن الأولى لم تُسجَّل، لا يريد الإيقاف.
+  //   فالضغطة التي تلي البدء بأقلّ من نصف ثانيةٍ تُهمَل ولا تُوقف شيئًا.
+  if (searching) {
+    if (Date.now() - startedAt > DOUBLE_CLICK_GRACE) controller?.abort();
+    return;
+  }
   const raw = q.value.trim();
 
   if (!raw) { setStatus('اكتب بيتًا أولًا.', 'warn'); return; }
@@ -333,6 +344,7 @@ async function search() {
   history.add(raw);
   renderHistory();
   controller = new AbortController();
+  startedAt = Date.now();
   searching = true;
   btn.disabled = false;              // يبقى مفتوحًا ليُضغط للإيقاف
   btn.textContent = '■ أوقف البحث';

@@ -715,6 +715,34 @@ eq('والنسبة القصيرة بلا نقطتين تبقى مقبولة',
   ok('ولا تتجاوز الحدّ', big.meta.verseShards <= VERSE_SHARDS);
 }
 
+// ── الاستبعاد بالاحتواء ───────────────────────────────────────────────────
+{
+  const sample = [
+    { text: 'ترى الناس ما سرنا يسيرون خلفنا ... وإن نحن أومأنا إلى الناس وقفوا', poet: 'الفرزدق', source: {} },
+    { text: 'إذا غضبت عليك بنو تميم ... رأيت الناس كلهم غضابا', poet: 'جرير', source: {} },
+  ];
+  const ix = buildIndex(sample);
+  const so = { tokenShards: ix.meta.tokenShards, verseShards: ix.meta.verseShards };
+  const load = async (k, b) => (k === 'tokens' ? ix.tokens.get(b) : ix.store.get(b)) ?? {};
+
+  const half = await searchIndex('ترى الناس ما سرنا يسيرون خلفنا', load,
+    { ...so, excludeVerse: 'ترى الناس ما سرنا يسيرون خلفنا' });
+  ok('★ السؤال بشطرٍ من البيت لا يُعيد البيت نفسه',
+    !half.verses.some((v) => v.text.startsWith('ترى الناس')),
+    'الاستبعاد كان بالتطابق التامّ، والمستخدم يلصق شطرًا أو روايةً ناقصة');
+  ok('ويُعيد غيره', half.verses.length >= 1);
+
+  const full = await searchIndex(sample[0].text, load, { ...so, excludeVerse: sample[0].text });
+  ok('والتطابق التامّ يُستبعد كما كان', !full.verses.some((v) => v.text === sample[0].text));
+}
+
+// ── تجريدُ السوابق لا يُلبِس كلمةً بكلمة ─────────────────────────────────
+ok('★ «المنى» لا تُجرَّد فتصير «منى» فتطابق «منّي»',
+  !indexTokens('المنى').includes('مني'),
+  'التجريد بلا تحليلٍ صرفيّ يُصيب في الطويل ويخطئ في القصير');
+ok('و«بالتمني» ما زالت تُجرَّد', indexTokens('بالتمني').includes('تمني'));
+ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا'));
+
 // ── الخلاصة ───────────────────────────────────────────────────────────────
 const line = '─'.repeat(52);
 process.stdout.write(`\n${line}\n`);

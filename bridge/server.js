@@ -46,6 +46,40 @@ function send(res, status, body, origin) {
   res.end(JSON.stringify(body));
 }
 
+// ── التحقّق من المدخلات ────────────────────────────────────────────────────
+//
+// الجسر يعمل على جهاز صاحب المكتبة، وما يصله يأتي من متصفّحٍ قد يكون مخطئًا
+// أو مخرَّبًا. وقد وجدنا بالتجربة أنه كان يقبل ما لا يُقبل:
+// «query» مصفوفةً فيعيد أبياتًا، و«limit» سالبًا، و«categories» نصًّا،
+// وسؤالًا بمئة ألف حرف فيُشغّل به بحثًا في سبعة تصنيفات.
+
+const MAX_QUERY_CHARS = 2000;   // أطولُ قصيدةٍ يُعقل أن تُلصق
+
+class BadRequest extends Error {}
+
+function wantText(value, field, { max = MAX_QUERY_CHARS } = {}) {
+  if (typeof value !== 'string') throw new BadRequest(`${field} يجب أن يكون نصًّا`);
+  const t = value.trim();
+  if (!t) throw new BadRequest(`${field} مطلوب`);
+  if (t.length > max) throw new BadRequest(`${field} أطول من ${max} حرفًا`);
+  return t;
+}
+
+function wantCount(value, fallback, max) {
+  if (value === undefined || value === null) return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) throw new BadRequest('العدد يجب أن يكون موجبًا');
+  return Math.min(Math.floor(n), max);
+}
+
+function wantIds(value, fallback) {
+  if (value === undefined || value === null) return fallback;
+  if (!Array.isArray(value)) throw new BadRequest('التصنيفات يجب أن تكون مصفوفة أرقام');
+  const ids = value.map(Number);
+  if (ids.some((n) => !Number.isInteger(n) || n <= 0)) throw new BadRequest('التصنيفات أرقامٌ موجبة');
+  return ids;
+}
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -57,7 +91,7 @@ function readBody(req) {
     });
     req.on('end', () => {
       if (!data) return resolve({});
-      try { resolve(JSON.parse(data)); } catch { reject(new Error('جسمٌ ليس JSON')); }
+      try { resolve(JSON.parse(data)); } catch { reject(new BadRequest('جسمٌ ليس JSON')); }
     });
     req.on('error', reject);
   });
@@ -96,20 +130,23 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/v1/search' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.query) return send(res, 400, { error: 'query مطلوب' }, corsOrigin);
-      return send(res, 200, await shamela.search(b.query, b), corsOrigin);
+      const query = wantText(b.query, 'query');
+      return send(res, 200, await shamela.search(query, {
+        mode: b.mode, distance: wantCount(b.distance, 10, 50),
+        limit: wantCount(b.limit, 20, 100), categories: wantIds(b.categories, undefined),
+      }), corsOrigin);
     }
 
     // ★ النقطة الأهمّ: استعلامٌ يدخل، أبياتٌ موثَّقةٌ تخرج ★
     if (url.pathname === '/v1/verses' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.query) return send(res, 400, { error: 'query مطلوب' }, corsOrigin);
-      const out = await shamela.verses(b.query, {
-        mode: b.mode ?? 'near',
-        distance: b.distance ?? 10,
-        limit: Math.min(Number(b.limit ?? 20), 50),
-        categories: b.categories ?? POETRY_CATEGORIES,
-        excludeVerse: b.excludeVerse ?? b.query,
+      const query = wantText(b.query, 'query');
+      const out = await shamela.verses(query, {
+        mode: b.mode === 'phrase' || b.mode === 'words' ? b.mode : 'near',
+        distance: wantCount(b.distance, 10, 50),
+        limit: wantCount(b.limit, 20, 50),
+        categories: wantIds(b.categories, POETRY_CATEGORIES),
+        excludeVerse: typeof b.excludeVerse === 'string' ? b.excludeVerse : query,
       });
       return send(res, 200, out, corsOrigin);
     }
@@ -117,13 +154,13 @@ const server = http.createServer(async (req, res) => {
     // ★ مجلس النماذج: بيتٌ يدخل، فيقترح كلُّ نموذجٍ مدخلًا للمعنى، ثم تُبحث به الشاملة
     if (url.pathname === '/v1/council' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.query) return send(res, 400, { error: 'query مطلوب' }, corsOrigin);
+      const query = wantText(b.query, 'query');
       try {
-        const out = await shamela.council(b.query, process.env, {
-          queryLimit: Math.min(Number(b.queryLimit ?? 14), 24),
-          pageBudget: Math.min(Number(b.pageBudget ?? 60), 120),
+        const out = await shamela.council(query, process.env, {
+          queryLimit: wantCount(b.queryLimit, 14, 24),
+          pageBudget: wantCount(b.pageBudget, 60, 120),
           web: b.web !== false,
-          webQueryLimit: Math.min(Number(b.webQueryLimit ?? 4), 8),
+          webQueryLimit: wantCount(b.webQueryLimit, 4, 8),
         });
         return send(res, 200, out, corsOrigin);
       } catch (e) {
@@ -134,9 +171,13 @@ const server = http.createServer(async (req, res) => {
     // تفريغ صورة — والنتيجة اقتراحٌ لا يُبحث به حتى يعتمده المستخدم بيده
     if (url.pathname === '/v1/transcribe' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.image) return send(res, 400, { error: 'image مطلوبة (base64)' }, corsOrigin);
+      const image = wantText(b.image, 'image', { max: 24e6 });
+      if (!/^[A-Za-z0-9+/=\s]+$/.test(image)) throw new BadRequest('image ليست base64');
       try {
-        const out = await transcribeImage({ imageBase64: b.image, mimeType: b.mimeType });
+        const out = await transcribeImage({
+          imageBase64: image,
+          mimeType: typeof b.mimeType === 'string' ? b.mimeType : 'image/jpeg',
+        });
         return send(res, 200, out, corsOrigin);
       } catch (e) {
         return send(res, e.code === 'NO_PROVIDER' ? 501 : 502, { error: e.message, code: e.code }, corsOrigin);
@@ -146,11 +187,13 @@ const server = http.createServer(async (req, res) => {
     // سياقُ البيت: ما قبله وما بعده في صفحته — «أرِني الصفحة»
     if (url.pathname === '/v1/context' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.book_id || !b.page_id) return send(res, 400, { error: 'book_id و page_id مطلوبان' }, corsOrigin);
-      const pg = await shamela.page(b.book_id, b.page_id);
+      const bookId = wantCount(b.book_id, null, 1e9);
+      const pageId = wantCount(b.page_id, null, 1e9);
+      if (!bookId || !pageId) throw new BadRequest('book_id و page_id مطلوبان');
+      const pg = await shamela.page(bookId, pageId);
       const body = pg?.body ?? '';
       let excerpt = body;
-      if (b.around) {
+      if (typeof b.around === 'string' && b.around) {
         const { normalize } = await import('../core/normalize.js');
         const needle = normalize(b.around).split(' ').slice(0, 4).join(' ');
         const norm = normalize(body);
@@ -158,7 +201,7 @@ const server = http.createServer(async (req, res) => {
         if (at !== -1) {
           const ratio = body.length / (norm.length || 1);
           const centre = Math.round(at * ratio);
-          const radius = Math.min(Number(b.radius ?? 600), 2000);
+          const radius = wantCount(b.radius, 600, 2000);
           excerpt = body.slice(Math.max(0, centre - radius), centre + radius);
         }
       }
@@ -170,13 +213,17 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname === '/v1/page' && req.method === 'POST') {
       const b = await readBody(req);
-      if (!b.book_id || !b.page_id) return send(res, 400, { error: 'book_id و page_id مطلوبان' }, corsOrigin);
-      return send(res, 200, await shamela.page(b.book_id, b.page_id), corsOrigin);
+      const bookId = wantCount(b.book_id, null, 1e9);
+      const pageId = wantCount(b.page_id, null, 1e9);
+      if (!bookId || !pageId) throw new BadRequest('book_id و page_id مطلوبان');
+      return send(res, 200, await shamela.page(bookId, pageId), corsOrigin);
     }
 
     return send(res, 404, { error: 'لا شيء هنا' }, corsOrigin);
   } catch (e) {
-    return send(res, 500, { error: String(e.message ?? e) }, corsOrigin);
+    // ★ خطأُ المرسِل ٤٠٠ لا ٥٠٠ ★ — و«جسمٌ ليس JSON» كان يُردّ خطأَ خادم
+    const status = e instanceof BadRequest ? 400 : 500;
+    return send(res, status, { error: String(e.message ?? e) }, corsOrigin);
   }
 });
 

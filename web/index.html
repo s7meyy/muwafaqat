@@ -62,7 +62,7 @@
       <span>استعن بمجلس النماذج</span>
       <span class="hint" id="council-hint"></span>
     </label>
-    <span class="hint" id="hint"></span>
+    <span class="hint" id="hint" role="status" aria-live="polite"></span>
   </div>
 
   <div id="history" class="chips history" hidden></div>
@@ -99,10 +99,10 @@
     <label class="check"><input type="checkbox" class="trust-filter" value="circulated" checked><span>🟠 متداوَل</span></label>
   </section>
 
-  <section id="status" class="status" hidden></section>
-  <p id="filter-note"></p>
-  <p id="ranking-note" class="ranking-note"></p>
-  <section id="results" class="results"></section>
+  <section id="status" class="status" role="status" aria-live="polite" hidden></section>
+  <p id="filter-note" aria-live="polite"></p>
+  <p id="ranking-note" class="ranking-note" aria-live="polite"></p>
+  <section id="results" class="results" aria-label="الأبيات الموافقة"></section>
 </main>
 
 <footer class="foot">
