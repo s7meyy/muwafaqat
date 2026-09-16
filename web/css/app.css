@@ -332,3 +332,16 @@ button.stopping{background:var(--danger)}
 #more{font:inherit;background:var(--card);color:var(--accent);border:1px solid var(--accent);
   border-radius:999px;padding:8px 22px;cursor:pointer}
 #more:hover{background:var(--accent-soft)}
+
+/* ★ معجمُ الصور الشعرية ★ */
+.imagery{margin-top:18px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:16px 20px}
+.imagery-head{display:flex;justify-content:space-between;align-items:baseline}
+.imagery-head h2{margin:0;font-size:1.05rem}
+#imagery-list{margin:10px 0 14px}
+#imagery-list .chip{font:inherit;cursor:pointer;border:1px solid var(--line);
+  background:var(--bg);color:var(--ink);border-radius:999px;padding:5px 12px;font-size:.88rem}
+#imagery-list .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+#imagery-verses .card{margin-top:10px}
+.img-link{font:inherit;font-size:inherit;background:none;border:0;padding:0;
+  color:var(--accent);cursor:pointer;text-decoration:underline dotted}

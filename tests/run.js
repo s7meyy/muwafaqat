@@ -27,6 +27,7 @@ import { countLabel, VERSE, PAGE, MATCHED_VERSE } from '../core/plural.js';
 import { availableProviders, transcribeImage } from '../bridge/transcribe.js';
 import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
 import { missingCategories, categoryName } from '../core/categories.js';
+import { imagesOf, buildImageryIndex } from '../core/imagery.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1317,6 +1318,33 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
      'فلا يحسب الباحث سكوتَ الفهرس سكوتَ الشعر');
   ok('والمفهرَسُ لا يُذكر فيها', !missing.some((c) => c.id === 34));
   ok('والتراجمُ صارت مفهرَسةً افتراضًا', !missingCategories([26]).some((c) => c.id === 26));
+}
+
+// ── معجمُ الصور الشعرية ───────────────────────────────────────────────────
+// ★ البابُ الذي سُمّي في أوّل الطلب: «المعنى والموضوع والصور الشعرية». ★
+{
+  eq('★ «المنية» و«سهم» اقترانٌ مرصود',
+     imagesOf('رمتني المنية بسهم صائب لا يخطئ')[0]?.label, 'الموت والمنية ← سهم');
+  eq('و«الكف» و«بحر»', imagesOf('وكفك بحر في العطاء ونائل')[0]?.label, 'الجود والكرم ← بحر');
+  ok('والسوابقُ لا تمنع الرصد', imagesOf('رمتني المنية بسهم').length === 1,
+     '«بسهم» لا تُجرَّد إلى «سهم» (ثلاثةُ أحرف)، فتُولَّد صورُ الكلمة بسوابقها بدل تجريد النصّ');
+  ok('★ وما لا صورةَ فيه لا تُختلق له', imagesOf('بيتٌ لا صورةَ فيه ولا شيء').length === 0);
+  ok('★ و«فيء» لا تُقرأ حرفَ جرّ',
+     imagesOf('لعمري لئن كان المخبر صادقا في سالف الدهر').every((i) => i.vehicle !== 'ظل'),
+     '«فيء» تُطبَّع «في» فكانت تلتقي بحرف الجرّ فتُخرج صورةً لا وجود لها');
+
+  const verses = [
+    { text: 'رمتني المنية بسهم صائب', poet: 'أ', deathYear: 100 },
+    { text: 'وللمنية سهم لا يطيش', poet: 'ب', deathYear: 354 },
+    { text: 'وكفك بحر في العطاء', poet: 'ج', deathYear: 200 },
+  ];
+  const idx = buildImageryIndex(verses, { minVerses: 2 });
+  eq('★ وتُجمع أبياتُ الصورة الواحدة', idx.length, 1,
+     'والباحث يجمعها ليرى تطوّرها لا ليقرأ أبياتًا متفرّقة');
+  eq('مرتَّبةً بالأقدم', idx[0].first.poet, 'أ');
+  eq('ومعها مدى الزمن', idx[0].span.from, 100);
+  eq('وعددُ شعرائها', idx[0].poets, 2);
+  ok('وما لم يتكرّر لا يدخل المعجم', !idx.some((g) => g.vehicle === 'بحر'));
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

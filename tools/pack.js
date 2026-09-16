@@ -11,7 +11,8 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { buildIndex, shardName } from '../core/verse-index.js';
 import { detectRegister } from '../core/register.js';
-import { toArabicDigits, poetKey } from '../core/normalize.js';
+import { buildImageryIndex } from '../core/imagery.js';
+import { toArabicDigits, poetKey, normalize as normalizeText } from '../core/normalize.js';
 import { countLabel, SHARD, VERSE } from '../core/plural.js';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) => {
@@ -82,6 +83,32 @@ built.meta.poets = new Set(verses.map((v) => v.poet).filter(Boolean).map(poetKey
 built.meta.categories = [...new Set(verses.map((v) => v.source?.category).filter(Boolean))];
 
 fs.mkdirSync(OUT, { recursive: true });
+
+// ★ معجمُ الصور الشعرية — يُبنى هنا مرّةً، فيتصفّحه الباحث بلا تنزيل الفهرس. ★
+//   ولا تُسمّى الصورةُ باسمٍ من عندنا: يُرصد اجتماعُ لفظين في بيت («المنية»
+//   و«سهم»)، وتُجمع أبياتُه مرتَّبةً بالأقدم — فهو اقترانٌ مرصودٌ لا تصنيفٌ مزعوم.
+const MAX_IMAGES = 300;
+const MAX_IDS = 240;
+{
+  const withIds = [];
+  let id = 0;
+  const seen = new Set();
+  for (const v of verses) {
+    const key = normalizeText(v.text);
+    if (!key || seen.has(key)) continue;   // الترقيمُ نفسُه الذي في buildIndex
+    seen.add(key);
+    withIds.push({ ...v, id: ++id });
+  }
+  const images = buildImageryIndex(withIds, { minVerses: 2 })
+    .slice(0, MAX_IMAGES)
+    .map((g) => ({
+      label: g.label, field: g.field, vehicle: g.vehicle,
+      count: g.verses.length, poets: g.poets, span: g.span,
+      ids: g.verses.slice(0, MAX_IDS).map((v) => v.id),
+    }));
+  fs.writeFileSync(path.join(OUT, 'imagery.json'), JSON.stringify(images));
+  built.meta.images = images.length;
+}
 const tok = writeShards(path.join(OUT, 't'), built.tokens);
 const ver = writeShards(path.join(OUT, 'v'), built.store);
 const tokenBytes = tok.bytes, verseBytes = ver.bytes;
@@ -124,6 +151,8 @@ process.stdout.write(
       + `${toArabicDigits(String(built.meta.maxPostings))} موضعًا: ${built.meta.cappedTokens.slice(0, 8).join('، ')}`
       + `${built.meta.cappedTokens.length > 8 ? '…' : ''}\n`
     : '')
+  + (built.meta.images
+    ? `الصور الشعرية: ${toArabicDigits(String(built.meta.images))} صورةً مرصودة\n` : '')
   + (built.meta.semantic
     ? `بالمعنى: ${toArabicDigits(String(built.meta.withNeighbors))} بيتًا له جيرةٌ محسوبة — `
       + `فالبحث بالمعنى يعمل بلا مفتاحٍ ولا شبكة\n`

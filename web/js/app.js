@@ -13,11 +13,12 @@ import { matchReason, markShared } from '../../core/why.js';
 import { citationOf } from '../../core/citation.js';
 import { rhyme, meterOf } from '../../core/prosody.js';
 import { missingCategories } from '../../core/categories.js';
+import { imagesOf } from '../../core/imagery.js';
 import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic, inputKind } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
-import { searchStatic, semanticMatches, indexMeta } from './static-index.js';
+import { searchStatic, semanticMatches, indexMeta, imageryIndex, versesByIds } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
 import { researchHtml, csv, bibtexAll, byOldest } from '../../core/export.js';
 import { similarity } from '../../core/dedupe.js';
@@ -217,6 +218,13 @@ function card(v, rank = 0) {
     ? `<p class="src">وفي روايةٍ: <bdi>${esc(v.variant)}</bdi><span class="hint"> — من حاشية المحقّق</span></p>`
     : '';
 
+  // ★ صورةُ البيت — اقترانٌ مرصودٌ في لفظه، لا تصنيفٌ من عندنا ★
+  const images = imagesOf(v.text);
+  const imagery = images.length
+    ? `<p class="src imagery-line">الصورة: ${images.slice(0, 2).map((i) => `<button type="button" class="img-link" data-img="${esc(i.label)}">${esc(i.label)}</button>`).join(' · ')}`
+      + '<span class="hint"> — اقترانٌ مرصودٌ في ألفاظ البيت</span></p>'
+    : '';
+
   // ★ القافية والرويّ — أوّلُ ما يكتبه الباحث في بطاقته، ويُحسبان حسابًا. ★
   //   والمعارضة (النظمُ على بحر قصيدةٍ ورويِّها) بابٌ أصيل، ومدخلُها الرويّ.
   const qafiya = rhyme(v.text);
@@ -280,7 +288,7 @@ function card(v, rank = 0) {
       ${nabati}${mashtur}${unsplit}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
-    ${context}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}
+    ${context}${imagery}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}
     <div class="actions">
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>
@@ -301,6 +309,10 @@ function card(v, rank = 0) {
   });
   // ★ «أبياتٌ كهذا» — توسيعُ البحث من نتيجةٍ لا من السؤال الأوّل. ★
   //   وهو أكثرُ ما يفعله الباحث حين يقع على بيتٍ قريب: يتتبّعه لا يعود أدراجه.
+  for (const btn of el.querySelectorAll('.img-link')) {
+    btn.addEventListener('click', () => openImagery(btn.dataset.img));
+  }
+
   el.querySelector('[data-act="more"]').addEventListener('click', () => {
     q.value = v.text;
     refreshSearchButton();
@@ -644,6 +656,59 @@ function renderItself(list) {
   }
 }
 
+/**
+ * ★ معجمُ الصور الشعرية. ★
+ * «المنيّة ← سهم» · «الشيب ← صبح» — يُجمع لكلّ صورةٍ أبياتُها مرتَّبةً بالأقدم،
+ * فيرى الباحث ★ تطوّرَ الصورة ★ لا أبياتًا متفرّقة. وهو البابُ الذي سُمّي في
+ * أوّل الطلب: «المعنى والموضوع والصور الشعرية».
+ */
+async function openImagery(label = null) {
+  const box = $('imagery');
+  const list = $('imagery-list');
+  const body = $('imagery-verses');
+  if (!box) return;
+  box.hidden = false;
+  box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const images = await imageryIndex();
+  if (!images.length) {
+    list.replaceChildren();
+    const meta = await indexMeta().catch(() => null);
+    body.innerHTML = meta
+      ? '<p class="hint">لم تتكرّر صورةٌ مرصودةٌ مرّتين في هذا الفهرس بعد — والمعجمُ يكبر بكبره.</p>'
+      : '<p class="hint">لا فهرسَ منشورٌ بعد، والمعجمُ يُبنى معه (tools/pack.js).</p>';
+    return;
+  }
+
+  list.replaceChildren();
+  for (const g of images) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip' + (g.label === label ? ' on' : '');
+    chip.textContent = `${g.label} (${ar(String(g.count))})`;
+    chip.addEventListener('click', () => showImage(g));
+    list.append(chip);
+  }
+  const chosen = images.find((g) => g.label === label);
+  if (chosen) showImage(chosen);
+  else body.replaceChildren();
+}
+
+async function showImage(g) {
+  const body = $('imagery-verses');
+  body.innerHTML = '<p class="hint">يُجلب…</p>';
+  const verses = await versesByIds(g.ids);
+  const ordered = verses.sort((a, b) => (a.deathYear ?? Infinity) - (b.deathYear ?? Infinity));
+  const head = document.createElement('p');
+  head.className = 'src';
+  head.textContent = `${g.label} — ${countLabel(g.count, VERSE)}`
+    + (g.poets ? ` عند ${countLabel(g.poets, POET).replace(/^لـ?/, '')}` : '')
+    + (g.span ? ` · من ت ${ar(String(g.span.from))}هـ إلى ت ${ar(String(g.span.to))}هـ` : '')
+    + ' · مرتَّبةً بالأقدم، فأوّلُها أسبقُها.';
+  body.replaceChildren(head);
+  ordered.forEach((v, i) => body.append(card(v, i + 1)));
+}
+
 /** ما بحثتَ عنه قريبًا — يُستعاد بنقرة. */
 function renderHistory() {
   const list = history.all();
@@ -892,6 +957,8 @@ for (const b of document.querySelectorAll('.example')) {
   b.addEventListener('click', () => { q.value = b.textContent.trim(); refreshSearchButton(); search(); });
 }
 $('within')?.addEventListener('input', () => renderVerses());
+$('imagery-btn')?.addEventListener('click', () => openImagery());
+$('imagery-close')?.addEventListener('click', () => { $('imagery').hidden = true; });
 $('limits-btn')?.addEventListener('click', () => { const el = $('limits'); el.hidden = !el.hidden; });
 $('keys-btn')?.addEventListener('click', () => { const el = $('keys'); el.hidden = !el.hidden; });
 

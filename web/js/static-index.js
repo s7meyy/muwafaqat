@@ -4,7 +4,7 @@
 // لا خادم ولا قاعدة: ملفاتٌ ساكنةٌ تُجلب عند الحاجة، وتُحفظ في الذاكرة لئلّا
 // تُجلب مرّتين. والمتصفّح لا ينزّل الفهرس كله — شظايا كلمات بحثه وحدها.
 
-import { searchIndex, shardName, neighborsOf } from '../../core/verse-index.js';
+import { searchIndex, shardName, neighborsOf, verseBucketOf, fromRecord } from '../../core/verse-index.js';
 
 const BASE = 'index';
 const cache = new Map();
@@ -85,4 +85,33 @@ export async function semanticMatches(verse, { limit = 12 } = {}) {
     semantic: true,
     occurrences: v.occurrences ?? 1,
   }));
+}
+
+let imageryPromise = null;
+
+/** ★ معجمُ الصور: يُبنى يوم الفهرسة ويُجلب ملفًّا واحدًا صغيرًا. ★ */
+export function imageryIndex() {
+  imageryPromise ??= fetch(`${BASE}/imagery.json`, { cache: 'force-cache' })
+    .then((r) => (r.ok ? r.json() : []))
+    .catch(() => []);
+  return imageryPromise;
+}
+
+/** أبياتُ صورةٍ بعينها — تُجلب بأرقامها من شظايا السجلّات وحدها. */
+export async function versesByIds(ids = []) {
+  const meta = await indexMeta();
+  if (!meta || !ids.length) return [];
+  const buckets = new Map();
+  for (const id of ids) {
+    const b = verseBucketOf(id, meta.verseShards);
+    if (!buckets.has(b)) buckets.set(b, loadShard('verses', b));
+  }
+  const stores = new Map();
+  for (const [b, p] of buckets) stores.set(b, await p);
+  const out = [];
+  for (const id of ids) {
+    const rec = stores.get(verseBucketOf(id, meta.verseShards))?.[id];
+    if (rec) out.push(fromRecord(rec));
+  }
+  return out;
 }

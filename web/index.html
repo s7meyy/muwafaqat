@@ -77,6 +77,17 @@
 
   <div id="history" class="chips history" hidden></div>
 
+  <!-- ★ معجمُ الصور الشعرية — البابُ الذي سُمّي في أوّل الطلب ★ -->
+  <section id="imagery" class="imagery" hidden>
+    <div class="imagery-head">
+      <h2>معجمُ الصور</h2>
+      <button type="button" id="imagery-close" class="linkish quiet">أغلِق</button>
+    </div>
+    <p class="hint">اقترانٌ مرصودٌ في ألفاظ الأبيات — لا تصنيفَ من عندنا. اضغط صورةً لترى أبياتها مرتَّبةً بالأقدم.</p>
+    <div id="imagery-list" class="chips"></div>
+    <div id="imagery-verses"></div>
+  </section>
+
   <div id="saved-bar" class="saved-bar" hidden>
     <span>محفوظاتك: <strong id="saved-count"></strong></span>
     <label class="group-pick" for="group-name">المجموعة:
@@ -163,7 +174,8 @@
 
 <footer class="foot">
   <p>لا يُعرض بيتٌ إلا وُجد نصُّه في مصدرٍ حقيقيّ. وما لم يُوجد — لا يُعرض.</p>
-  <p><button type="button" id="limits-btn" class="linkish">حدودُ هذا الموقع — ما لا يعرفه ولا يدّعيه</button>
+  <p><button type="button" id="imagery-btn" class="linkish">معجمُ الصور الشعرية</button> ·
+     <button type="button" id="limits-btn" class="linkish">حدودُ هذا الموقع — ما لا يعرفه ولا يدّعيه</button>
      · <button type="button" id="keys-btn" class="linkish quiet">اختصارات لوحة المفاتيح (؟)</button></p>
   <div id="limits" class="limits" hidden>
     <h2>حدودُ هذا الموقع</h2>
