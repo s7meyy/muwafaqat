@@ -200,6 +200,8 @@ export function toRecord(verse, id) {
 export function fromRecord(rec) {
   const death = rec.d ?? null;
   return {
+    // رقمُه في الفهرس — به يُعرف موضعُه من قصيدته
+    id: rec.i ?? null,
     text: rec.t,
     sadr: String(rec.t).split(' ... ')[0] ?? rec.t,
     ajz: String(rec.t).split(' ... ')[1] ?? '',

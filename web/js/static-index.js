@@ -7,6 +7,7 @@
 import { searchIndex, shardName, neighborsOf, verseBucketOf, fromRecord } from '../../core/verse-index.js';
 import { expandByMeaning } from '../../core/meaning.js';
 import { imagesOf } from '../../core/imagery.js';
+import { runFor } from '../../core/poems.js';
 
 const BASE = 'index';
 const cache = new Map();
@@ -164,6 +165,28 @@ async function meaningAndImagery(query, meta, seen) {
     }
   }
   return out;
+}
+
+let poemsPromise = null;
+
+/** ★ فهرسُ المواضع — ملفٌّ صغيرٌ يُجلب مرّةً عند أوّل «أرِني القصيدة». ★ */
+export function poemIndex() {
+  poemsPromise ??= fetch(`${BASE}/poems.json`, { cache: 'force-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  return poemsPromise;
+}
+
+/**
+ * الأبياتُ الواردةُ مع هذا البيت في موضعه، بترتيب الصفحة وفيها هو.
+ * وتُجلب بأرقامها من شظايا السجلّات — فلا يُنزَّل الفهرس كلُّه.
+ */
+export async function contextOf(verse) {
+  const index = await poemIndex();
+  const run = runFor(index, verse);
+  if (!run) return null;
+  const verses = await versesByIds(run);
+  return verses.length > 1 ? verses : null;
 }
 
 let auditPromise = null;

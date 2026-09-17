@@ -12,6 +12,7 @@ import readline from 'node:readline';
 import { buildIndex, shardName } from '../core/verse-index.js';
 import { detectRegister } from '../core/register.js';
 import { buildImageryIndex } from '../core/imagery.js';
+import { buildPoemIndex } from '../core/poems.js';
 import { toArabicDigits, poetKey, normalize as normalizeText } from '../core/normalize.js';
 import { countLabel, SHARD, VERSE } from '../core/plural.js';
 
@@ -110,6 +111,14 @@ const MAX_IDS = 240;
     }));
   fs.writeFileSync(path.join(OUT, 'imagery.json'), JSON.stringify(images));
   built.meta.images = images.length;
+
+  // ★ سياقُ الموضع: أبياتٌ وردت مع البيت في صفحته بترتيبها ★ — «أرِني القصيدة».
+  //   ولا يُدّعى أنها قصيدتُه: الجمعُ بالموضع، والقطعُ عند تغيّر الرويّ أو البحر.
+  const poems = buildPoemIndex(withIds);
+  fs.writeFileSync(path.join(OUT, 'poems.json'), JSON.stringify(poems));
+  built.meta.poemRuns = Object.values(poems).reduce((n, runs) => n + runs.length, 0);
+  built.meta.versesInContext = Object.values(poems)
+    .reduce((n, runs) => n + runs.reduce((m, r) => m + r.length, 0), 0);
 }
 const tok = writeShards(path.join(OUT, 't'), built.tokens);
 const ver = writeShards(path.join(OUT, 'v'), built.store);
@@ -174,6 +183,9 @@ process.stdout.write(
     : '')
   + (built.meta.images
     ? `الصور الشعرية: ${toArabicDigits(String(built.meta.images))} صورةً مرصودة\n` : '')
+  + (built.meta.poemRuns
+    ? `سياقُ الموضع: ${toArabicDigits(String(built.meta.versesInContext))} بيتًا في `
+      + `${toArabicDigits(String(built.meta.poemRuns))} موضعًا — لكلٍّ منها «أرِني القصيدة»\n` : '')
   + (built.meta.semantic
     ? `بالمعنى: ${toArabicDigits(String(built.meta.withNeighbors))} بيتًا له جيرةٌ محسوبة — `
       + `فالبحث بالمعنى يعمل بلا مفتاحٍ ولا شبكة\n`

@@ -218,6 +218,19 @@ button{min-height:44px}
   margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
   background:var(--bg);font-size:.94rem;line-height:2.1;white-space:pre-wrap;max-height:320px;overflow:auto;
 }
+/* ★ «أرِني القصيدة» — البيتُ في سياقه ★ */
+.poem{
+  margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+  background:var(--bg);max-height:420px;overflow:auto;
+}
+.poem-note{margin:0 0 10px;color:var(--muted);font-size:.84rem;line-height:1.9}
+.poem-lines{width:100%;border-collapse:collapse;font-size:1.02rem;line-height:2}
+.poem-lines td{width:50%;padding:3px 8px;vertical-align:baseline}
+.poem-lines td.sadr{text-align:right}
+.poem-lines td.ajz{text-align:left}
+.poem-lines tr.here{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.poem-lines tr.here td{font-weight:600}
+@media print{ .poem{max-height:none;overflow:visible} }
 .fixed-by-you{color:var(--info);font-size:.84rem}
 .badge.t-mudawwar{color:var(--muted)}
 button.stopping{background:var(--danger)}

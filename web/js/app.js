@@ -18,7 +18,7 @@ import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic, inputKind } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
-import { searchStatic, semanticMatches, indexMeta, imageryIndex, versesByIds, auditReport } from './static-index.js';
+import { searchStatic, semanticMatches, indexMeta, imageryIndex, versesByIds, auditReport, contextOf } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
 import { researchHtml, csv, bibtexAll, byOldest } from '../../core/export.js';
 import { similarity } from '../../core/dedupe.js';
@@ -293,12 +293,14 @@ function card(v, rank = 0) {
       <button type="button" data-act="copy">انسخ</button>
       <button type="button" data-act="save" class="${isSaved ? 'on' : ''}">${isSaved ? '★ محفوظ' : '☆ احفظ'}</button>
       ${s.bookId && capabilities ? '<button type="button" data-act="ctx" class="quiet">أرِني الصفحة</button>' : ''}
+      ${v.id ? '<button type="button" data-act="poem" class="quiet">أرِني القصيدة</button>' : ''}
       <button type="button" data-act="more" class="quiet">أبياتٌ كهذا</button>
       <button type="button" data-act="cite" class="quiet">انسخ الإحالة</button>
       <button type="button" data-act="fix" class="quiet">صحّح النسبة</button>
       <button type="button" data-act="no" class="quiet">ليس موافقًا</button>
     </div>
-    <div class="context" hidden></div>`;
+    <div class="context" hidden></div>
+    <div class="poem" hidden></div>`;
 
   el.querySelector('[data-act="copy"]').addEventListener('click', async (e) => {
     try {
@@ -357,6 +359,40 @@ function card(v, rank = 0) {
     } catch { box.textContent = 'تعذّر الاتصال بالجسر.'; }
     box.hidden = false;
     e.target.textContent = 'أخفِ الصفحة';
+  });
+  // ★ «أرِني القصيدة» — البيتُ في سياقه لا مبتورًا ★
+  //
+  //   والبيتُ وحده يُقرأ خطأً: كم من بيتٍ ظُنَّ فخرًا وهو في سياقه هجاء. وهذه
+  //   أبياتُه التي وردت معه في موضعه بترتيب الصفحة، تُجلب من الفهرس المنشور
+  //   بلا جسرٍ ولا مفتاح. ولا يُدّعى أنها حدودُ القصيدة — يُقال للقارئ ما هو.
+  el.querySelector('[data-act="poem"]')?.addEventListener('click', async (e) => {
+    const box = el.querySelector('.poem');
+    if (!box.hidden) { box.hidden = true; e.target.textContent = 'أرِني القصيدة'; return; }
+    e.target.textContent = 'يجلب…';
+    let run = null;
+    try { run = await contextOf(v); } catch { run = null; }
+    if (!run) {
+      box.innerHTML = '<p class="poem-note">لم يُستخرج من هذا الموضع غيرُ هذا البيت،'
+        + ' فلا سياقَ عندنا نعرضه. و«أرِني الصفحة» يفتح الصفحة كاملةً إن كان الجسرُ يعمل.</p>';
+    } else {
+      const here = fingerprint(v.text);
+      const lines = run.map((x) => {
+        const mine = fingerprint(x.text) === here;
+        const [sadr, ajz] = String(x.text).split(/\s*(?:\.{3}|…)\s*/);
+        return `<tr class="${mine ? 'here' : ''}">`
+          + `<td class="sadr">${esc(shaped(sadr ?? x.text))}</td>`
+          + `<td class="ajz">${esc(shaped(ajz ?? ''))}</td></tr>`;
+      }).join('');
+      // ★ ولا تُصاغ العبارةُ بفعلٍ يُطابق العدد ★ — «بيتان وردت» لحنٌ يراه
+      //   الأديبُ قبل غيره، والعربيةُ تُثنّي وتجمع، فتُجتنب المطابقةُ أصلًا.
+      box.innerHTML = `<p class="poem-note">ما ورد معه في هذا الموضع:`
+        + ` ${countLabel(run.length, VERSE)} بترتيب الصفحة، وبيتُك مُعلَّم.`
+        + ` وليست دعوى أنّ هذه حدودُ القصيدة: الجمعُ بالموضع،`
+        + ` والقطعُ عند تغيّر الرويّ أو البحر.</p>`
+        + `<table class="poem-lines">${lines}</table>`;
+    }
+    box.hidden = false;
+    e.target.textContent = 'أخفِ القصيدة';
   });
   el.querySelector('[data-act="no"]').addEventListener('click', () => {
     rejected.add(v.text);

@@ -30,6 +30,7 @@ import { missingCategories, categoryName } from '../core/categories.js';
 import { imagesOf, buildImageryIndex } from '../core/imagery.js';
 import { fieldsOf, expandByMeaning } from '../core/meaning.js';
 import { auditVerse, summarize, sample } from '../core/audit.js';
+import { buildPoemIndex, runFor, placeKey } from '../core/poems.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1474,6 +1475,64 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
 
   ok('وملفُّ Zotero يحمله تعليقًا لا مدخلًا', bibtexAll(items, { index: meta }).startsWith('% «الموافقات»'));
   ok('والمدخلاتُ بعده كما هي', bibtexAll(items, { index: meta }).includes('@incollection'));
+}
+
+// ── سياقُ الموضع: «أرِني القصيدة» ────────────────────────────────────────
+{
+  const at = (bookId, pageId, text, meter = null) => ({ source: { bookId, pageId }, text, meter });
+  const withIds = (list) => list.map((v, i) => ({ ...v, id: i + 1 }));
+
+  const verses = withIds([
+    at(1, 5, 'ألا كل شيء ما خلا الله باطلُ ... وكل نعيم لا محالة زائلُ'),
+    at(1, 5, 'وكل أناس سوف تدخل بينهم ... دويهية تصفر منها الأناملُ'),
+    at(1, 5, 'وكل امرئ يوما سيعلم سعيه ... إذا كشفت عند الإله المحاصلُ'),
+    // ★ قصيدةٌ أخرى في الصفحة نفسها: رويٌّ آخر ★
+    at(1, 5, 'وما المال والأهلون إلا ودائعُ ... ولا بد يوما أن ترد الودائعُ'),
+    at(1, 5, 'ألا إنما الأيام تبلي جديدها ... وتخلق أطماعا وتبقى المطامعُ'),
+    // بيتٌ فردٌ في صفحةٍ أخرى — لا سياقَ له
+    at(1, 9, 'بيت وحده في صفحته ... لا شيء معه'),
+  ]);
+
+  const index = buildPoemIndex(verses);
+  eq('مفتاحُ الموضع كتابٌ وصفحة', placeKey(verses[0]), '1:5');
+  eq('وبلا كتابٍ ولا صفحةٍ لا موضعَ يُدّعى', placeKey({ source: {} }), null);
+  eq('الموضعُ الواحدُ يُجمع', index['1:5'].length, 2);
+  ok('★ ويُقطع الجمعُ عند تغيّر الرويّ ★ — فصفحةُ المختارات فيها قصائدُ شتّى',
+     JSON.stringify(index['1:5'][0]) === JSON.stringify([1, 2, 3])
+     && JSON.stringify(index['1:5'][1]) === JSON.stringify([4, 5]),
+     JSON.stringify(index['1:5']));
+  ok('وبيتٌ فردٌ لا سياقَ له فلا يُحفظ', !index['1:9']);
+
+  ok('ويُردّ للبيت سياقُه وفيه هو', (runFor(index, verses[1]) ?? []).includes(2));
+  eq('ولبيتٍ من القصيدة الأخرى سياقُها لا سياقُ جارتها',
+     JSON.stringify(runFor(index, verses[4])), JSON.stringify([4, 5]));
+  eq('وما لا سياقَ له يُقال فيه: لا سياق', runFor(index, verses[5]), null);
+  eq('وبيتٌ بلا رقمٍ لا يُطلب له سياق', runFor(index, { ...verses[0], id: null }), null);
+
+  // ★ والبحرُ يقطع كالرويّ ★
+  const twoMeters = buildPoemIndex(withIds([
+    at(2, 1, 'الأول من الطويل هنا ... وعجزه كذلك يجري', 'الطويل'),
+    at(2, 1, 'والثاني مثله بحرا ... وعجزه كذلك يجري', 'الطويل'),
+    at(2, 1, 'وهذا من الكامل جاء ... وعجزه كذلك يجري', 'الكامل'),
+    at(2, 1, 'ورابعٌ من الكامل ... وعجزه كذلك يجري', 'الكامل'),
+  ]));
+  eq('فموضعٌ فيه بحران موضعان', twoMeters['2:1'].length, 2);
+
+  // والطولُ محدود — صفحةٌ ضخمةٌ لا تُعرض جملةً
+  const many = buildPoemIndex(withIds(
+    Array.from({ length: 150 }, () => at(3, 1, 'وكل أناس سوف تدخل بينهم ... دويهية تصفر منها الأناملُ'))
+  ), { maxRun: 40 });
+  ok('ولا يُعرض أكثرُ من حدٍّ في السياق الواحد',
+     many['3:1'].every((r) => r.length <= 40), JSON.stringify(many['3:1']?.map((r) => r.length)));
+}
+
+// ── علامةُ الحاشية بعلامتي التنصيص ───────────────────────────────────────
+{
+  const page = 'قال عبدة:\nإذا ما سلخت الشهر أهللت مثله ... كفى قاتلا سلخي الشهور وإهلالي «٢»\nومنه قول ابن قميئة:';
+  const [v] = extractVerses(page);
+  ok('★ ولا تُكتب علامةُ الحاشية بالأقواس وحدها ★',
+     v && !/«|٢/.test(v.text), v ? v.text : '(لم يُستخرج بيت)');
+  eq('ورقمُها يُحفظ مفتاحًا لشرح الغريب', v?.footnote, '٢');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

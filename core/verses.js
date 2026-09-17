@@ -32,6 +32,12 @@ const NOT_VERSE = /(?:رحمه الله|صلى الله عليه|رضي الله
 // الواحد («ألستم خير من ركب المطايا» و«١٥ ألستم خير…» يُعدّان بيتين).
 const NUMBER_PREFIX = /^\s*[\u0660-\u0669\u06F0-\u06F90-9]{1,3}\s*(?:[-–—.)]\s*|\s)/;
 
+// ★ علامةُ الحاشية لا تُكتب بالأقواس وحدها ★ — «محاضرات الأدباء» يكتبها
+//   بعلامتي التنصيص العربيتين: «كفى قاتلا سلخي الشهور وإهلالي ★«٢»★». وكان
+//   القصُّ يعرف (٢) و[٢] وحدهما، فيبقى في آخر البيت شطرُ العلامة: «وإهلالي «٢».
+//   ورقمُ الحاشية مفتاحُ شرحِ الغريب، فاقتطاعُه صحيحٌ وحفظُه أصحّ.
+const FOOT_MARK = /\s*[(\[«‹]([\u0660-\u0669\u06F0-\u06F90-9]{1,3})[)\]»›]\s*$/;
+
 const MIN_WORDS = 2;
 const MAX_WORDS = 14;
 const BALANCE_MIN = 0.45; // نسبة كلمات الشطر الأقصر إلى الأطول
@@ -154,7 +160,7 @@ export function extractVerses(pageText) {
       //   «تَدِفُّ دَفيفَ الرَّائحِ المُتَمَطِّرِ ★(٣)★» — كان الرقم يُحسب كلمةً
       //   من العجز فيرجّح قطعًا خاطئًا، ثم يبقى شطرُه في النصّ: «المُتَمَطِّرِ (٣».
       //   وهو في الحقيقة مفتاحُ الشرح: به تُعرف حاشيةُ هذا البيت من حواشي الصفحة.
-      const footMatch = /\s*[\(\[]([\u0660-\u0669\u06F0-\u06F90-9]{1,3})[\)\]]\s*$/.exec(rawAfter);
+      const footMatch = FOOT_MARK.exec(rawAfter);
       const after = footMatch ? rawAfter.slice(0, footMatch.index) : rawAfter;
       const footMark = footMatch?.[1] ?? null;
 
@@ -271,11 +277,11 @@ function extractMashtur(lines, already) {
         for (const i of run) {
           const raw = lines[i].trim();
           const numbered = NUMBER_PREFIX.test(raw);
-          const text = raw.replace(NUMBER_PREFIX, '').replace(/\s*[\(\[][\u0660-\u0669\u06F0-\u06F90-9]{1,3}[\)\]]\s*$/, '').trim();
+          const text = raw.replace(NUMBER_PREFIX, '').replace(FOOT_MARK, '').trim();
           if (rhymeOf(text) !== top[0]) continue;   // سطرٌ دخيلٌ بين الأسطر
           out.push({
             doubted: false,
-            footnote: /[\(\[]([\u0660-\u0669\u06F0-\u06F90-9]{1,3})[\)\]]\s*$/.exec(raw)?.[1] ?? null,
+            footnote: FOOT_MARK.exec(raw)?.[1] ?? null,
             sadr: text, ajz: '', text,
             joined: null, mudawwar: false, splitWord: null,
             plain: stripDiacritics(text).trim(),
