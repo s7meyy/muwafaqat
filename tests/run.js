@@ -14,7 +14,7 @@ import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } 
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
 import { matchReason, sharedWords, markShared, isMeaningful } from '../core/why.js';
 import { citationOf } from '../core/citation.js';
-import { researchHtml, csv, bibtexAll, byOldest } from '../core/export.js';
+import { researchHtml, csv, bibtexAll, byOldest, indexStamp } from '../core/export.js';
 import { rhyme, scan, meterOf } from '../core/prosody.js';
 import { meterFromHeading, occasionOf, parseFootnotes } from '../core/apparatus.js';
 import { gate } from '../core/verify.js';
@@ -1446,6 +1446,34 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   ok('العيّنةُ تتكرّر بعينها فيُقارَن القياسُ بالقياس', JSON.stringify(a) === JSON.stringify(b));
   ok('وهي عيّنةٌ لا أوائلُ القائمة', JSON.stringify(a) !== JSON.stringify(items.slice(0, 10)));
   eq('وحجمُها لا يتجاوز ما في اليد', sample(items, 500).length, 50);
+}
+
+// ── ختمُ النسخة في كل ما يخرج ────────────────────────────────────────────
+{
+  const meta = { version: 3, builtAt: '2026-09-17T07:04:00.000Z', verses: 126,
+    audit: { checked: 54, textAccuracy: 1 } };
+  const stamp = indexStamp(meta);
+  ok('الختمُ يذكر نسخةَ الفهرس', /نسخةُ الفهرس ٣/.test(stamp), stamp);
+  ok('ويذكر تاريخَ بنائه', /١٧\/٠٩\/٢٠٢٦/.test(stamp), stamp);
+  ok('وعددَ أبياته', /١٢٦ بيتًا/.test(stamp), stamp);
+  ok('★ وخطأَه المقيس ★', /١٠٠٪/.test(stamp) && /٥٤/.test(stamp), stamp);
+  eq('وبلا بياناتٍ لا يُختم شيءٌ ولا يُختلق', indexStamp(null), '');
+  ok('وتاريخٌ معطوبٌ يُسكت عنه لا يُكتب Invalid Date',
+     !/Invalid/.test(indexStamp({ version: 3, builtAt: 'لا تاريخ' })));
+
+  const items = [{ text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل',
+    poet: 'لبيد', source: { bookName: 'الديوان' } }];
+  ok('وملفُّ Word يحمله في خاتمته', researchHtml(items, { index: meta }).includes('نسخةُ الفهرس ٣'));
+  ok('ولا يحمل شيئًا إن لم يُعطَ', !researchHtml(items).includes('نسخةُ الفهرس'));
+
+  const sheet = csv(items, { index: meta });
+  const rows = sheet.split('\n');
+  ok('★ وختمُ الجدول سطرٌ أخيرٌ مصدَّرٌ بـ«#» لا بيتٌ يُحسب ★',
+     rows[rows.length - 1].startsWith('"# '), rows[rows.length - 1]);
+  eq('وسطورُ الأبيات على حالها: ترويسةٌ وبيت', csv(items).trim().split('\n').length, 2);
+
+  ok('وملفُّ Zotero يحمله تعليقًا لا مدخلًا', bibtexAll(items, { index: meta }).startsWith('% «الموافقات»'));
+  ok('والمدخلاتُ بعده كما هي', bibtexAll(items, { index: meta }).includes('@incollection'));
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

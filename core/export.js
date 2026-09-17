@@ -23,6 +23,33 @@ function rhymeLabel(v) {
   return q ? `رويّ ${q.rawi}${q.tail.length > 1 ? ` (ـ${q.tail})` : ''}` : '';
 }
 
+/**
+ * ★ نسخةُ الفهرس وتاريخُه في كل ما يخرج من الموقع. ★
+ *
+ * والعلّة أن الفهرس يُبنى مرّةً بعد مرّة: تُضاف كتبٌ، ويُصلَح استخراجٌ، فيتغيّر
+ * ما يعرضه الموقع. فالباحث الذي نقل عنّا في رسالته ثم عاد بعد سنةٍ لا يعرف
+ * أيَّ نسخةٍ نقل، ولا نعرف نحن كيف نُفسّر له فرقًا وجده. فتُختم كلُّ نسخةٍ
+ * بنسختها وتاريخِها وعدد أبياتها وخطئها المقيس.
+ *
+ * وما نقص منها يُحذف ولا يُختلق — وبلا بياناتٍ أصلًا لا يُختم شيء.
+ */
+export function indexStamp(meta) {
+  if (!meta) return '';
+  const bits = [];
+  if (meta.version != null) bits.push(`نسخةُ الفهرس ${ar(String(meta.version))}`);
+  if (meta.builtAt) {
+    const d = new Date(meta.builtAt);
+    if (!Number.isNaN(d.getTime())) bits.push(`بُني في ${ar(d.toISOString().slice(0, 10).split('-').reverse().join('/'))}`);
+  }
+  if (meta.verses) bits.push(`${ar(String(meta.verses))} بيتًا مفهرسًا`);
+  const a = meta.audit ?? null;
+  if (a?.checked) {
+    bits.push(`خطؤه المقيس: النصُّ حرفيٌّ في ${ar(String(Math.round((a.textAccuracy ?? 0) * 100)))}٪ `
+      + `من عيّنةِ ${ar(String(a.checked))} بيتًا أُعيد فتحُ صفحاتها`);
+  }
+  return bits.join(' · ');
+}
+
 /** «من قاله أولًا» — والباحث في الموافقات يسأل عنه قبل كل شيء. */
 export function byOldest(items) {
   return [...items].sort((a, b) => (a.deathYear ?? Infinity) - (b.deathYear ?? Infinity));
@@ -32,7 +59,7 @@ export function byOldest(items) {
  * ملفٌّ يُفتح في Word محافظًا على شكله: البيت شطرين، والإحالة حاشيةً.
  * (HTML لا docx — يفتحه Word وLibreOffice وGoogle Docs بلا مكتبةٍ ولا خادم.)
  */
-export function researchHtml(items, { title = 'الموافقات', chronological = true } = {}) {
+export function researchHtml(items, { title = 'الموافقات', chronological = true, index = null } = {}) {
   const list = chronological ? byOldest(items) : items;
   const rows = list.map((v, i) => {
     const { sadr, ajz } = hemistichs(v);
@@ -93,12 +120,13 @@ export function researchHtml(items, { title = 'الموافقات', chronologica
 <p class="foot">${ar(String(list.length))} بيتًا${chronological ? '، مرتَّبةً بالأقدم وفاةً' : ''}.
 كلُّ بيتٍ منقولٌ من مصدره كما ورد، ومعه موضعُه منه.</p>
 ${rows}
-<p class="foot">جُمعت بـ«الموافقات». وما لم يُوجد نصُّه في مصدرٍ لم يُعرض.</p>
+<p class="foot">جُمعت بـ«الموافقات». وما لم يُوجد نصُّه في مصدرٍ لم يُعرض.${
+  indexStamp(index) ? `<br>${esc(indexStamp(index))}` : ''}</p>
 </body></html>`;
 }
 
 /** جدولٌ لمن يبني تحليله بنفسه. */
-export function csv(items) {
+export function csv(items, { index = null } = {}) {
   const head = ['البيت', 'الصدر', 'العجز', 'القائل', 'سنة الوفاة', 'العصر',
     'البحر', 'الغرض', 'المناسبة', 'القافية', 'شرح الغريب', 'الرواية الأخرى',
     'مواضعه', 'اختُلف في نسبته', 'سبب الموافقة',
@@ -115,11 +143,18 @@ export function csv(items) {
       s.bookName ?? '', s.bookAuthor ?? '', s.printedPage ?? '', s.url ?? '',
       v.note ?? '', (v.tags ?? []).join(' · ')].map(cell).join(','));
   }
+  // ★ وخاتمةُ الجدول تقول من أيّ نسخةٍ خرج ★ — سطرٌ واحدٌ مصدَّرٌ بـ«#»
+  //   ليُعرف أنه ليس بيتًا، في خليّةٍ واحدةٍ لا يُفسد عمودًا.
+  const stamp = indexStamp(index);
+  if (stamp) lines.push(cell(`# ${stamp}`));
   // ★ BOM كي يفتحه Excel بالعربية لا بطلاسم ★
   return '﻿' + lines.join('\n');
 }
 
 /** لمن يستعمل Zotero وأخواتِه. */
-export function bibtexAll(items) {
-  return items.map((v) => citationOf(v, { style: 'bibtex' })).join('\n\n');
+export function bibtexAll(items, { index = null } = {}) {
+  const entries = items.map((v) => citationOf(v, { style: 'bibtex' })).join('\n\n');
+  const stamp = indexStamp(index);
+  // BibTeX يتجاهل ما خارج المدخلات، فالختمُ تعليقٌ لا يُفسد ملفَّ Zotero
+  return stamp ? `% «الموافقات» — ${stamp}\n\n${entries}` : entries;
 }

@@ -1023,16 +1023,26 @@ $('open-notebook')?.addEventListener('click', () => {
 $('nb-close')?.addEventListener('click', () => { $('notebook').hidden = true; });
 $('group-name')?.addEventListener('change', () => { if (!$('notebook').hidden) renderNotebook(); });
 
+// ★ نسخةُ الفهرس وتاريخُه يُختم بهما كلُّ ما يخرج ★ — فيُعرف بعد سنةٍ
+//   من أيّ نسخةٍ نُقل، ويُفسَّر كلُّ فرقٍ يجده الباحث.
+async function indexInfo() {
+  const [meta, audit] = await Promise.all([
+    indexMeta().catch(() => null), auditReport().catch(() => null),
+  ]);
+  return meta ? { ...meta, audit } : null;
+}
+
 // ★ ملفٌّ يُفتح في Word محافظًا على شكله — لا جدولٌ خامٌ يُعاد تنسيقه ★
-$('nb-word')?.addEventListener('click', () => {
+$('nb-word')?.addEventListener('click', async () => {
   const group = $('group-name')?.value.trim() || 'الموافقات';
-  downloadText(`${group}.doc`, researchHtml(notebookItems(), { title: group }), 'application/msword');
+  const index = await indexInfo();
+  downloadText(`${group}.doc`, researchHtml(notebookItems(), { title: group, index }), 'application/msword');
 });
-$('nb-csv')?.addEventListener('click', () => {
-  downloadText('muwafaqat.csv', csv(notebookItems()), 'text/csv;charset=utf-8');
+$('nb-csv')?.addEventListener('click', async () => {
+  downloadText('muwafaqat.csv', csv(notebookItems(), { index: await indexInfo() }), 'text/csv;charset=utf-8');
 });
-$('nb-bib')?.addEventListener('click', () => {
-  downloadText('muwafaqat.bib', bibtexAll(notebookItems()), 'application/x-bibtex');
+$('nb-bib')?.addEventListener('click', async () => {
+  downloadText('muwafaqat.bib', bibtexAll(notebookItems(), { index: await indexInfo() }), 'application/x-bibtex');
 });
 $('nb-print')?.addEventListener('click', () => window.print());
 
