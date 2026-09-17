@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalize, fingerprint, toArabicDigits, isMostlyArabic, sameName, poetKey } from '../core/normalize.js';
 import { extractVerses } from '../core/verses.js';
-import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject } from '../core/attribution.js';
+import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject, disputeInLine } from '../core/attribution.js';
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
 import { matchReason, sharedWords, markShared, isMeaningful } from '../core/why.js';
 import { citationOf } from '../core/citation.js';
@@ -1618,6 +1618,34 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
      tailAfterVerse('لا يكاد يفعل ذلك ... إلا قليلا. وقال أبو العتاهية:', 'لا يكاد يفعل ذلك ... إلا قليلا'), null);
   eq('ورقمُ الحاشية بعده ليس بترًا',
      tailAfterVerse('كفى قاتلا سلخي الشهور وإهلالي «٢»', 'كفى قاتلا سلخي الشهور وإهلالي'), null);
+}
+
+// ── البِنية العاشرة: طبقات الشعراء — إسنادٌ وخلافٌ مذكور ─────────────────
+//
+// صفحةٌ حقيقية من «طبقات فحول الشعراء» (٦٧٣٨: ٩٢): خبرٌ بإسناده يُختم بـ«فذكروا
+// قول عبيد»، وتحته بيتاه، ثم يقول الكتاب: «فجعلها يونس لعبيد… فلما قدم المفضّل
+// صرفها إلى أوس بن حجر» — خلافٌ في النسبة مذكورٌ في الصفحة نفسها.
+{
+  const page = '١٠٧ - أخبرنى يُونُس بن حبيب قَالَ قَالَ ذُو الرمة من أحسن النَّاس وَصفا للمطر فَذكرُوا قَول عبيد\n'
+    + '(دَان مسف فويق الأَرْض هيدبه ... يكَاد يَدْفَعهُ من قَامَ بِالرَّاحِ)\n'
+    + '(فَمن بنجوته كمن بمحلفه ... والمستكن كمن يمشى بقرواح)\n'
+    + 'فَجَعلهَا يُونُس لِعبيد وعَلى ذَلِك كَانَ إجماعنا فَلَمَّا قدم الْمفضل صرفهَا إِلَى أَوْس بن حجر\n';
+  const v = attributeVerses(page, extractVerses(page), { bookName: 'طبقات فحول الشعراء' });
+
+  eq('★ «فذكروا قولَ عبيد» نسبةٌ وإن لم ينتهِ السطرُ بنقطتين ★', v[0]?.poet, 'عبيد');
+  ok('★ ولا يُقرأ اسمٌ من داخل الإسناد ★ — «قال ذو الرمة» خبرٌ لا نسبة',
+     !v.some((x) => /ذو الرمة|يونس/.test(x.poet ?? '')),
+     v.map((x) => x.poet).join('، '));
+  eq('وتسري على أبيات القصيدة كلِّها', v[1]?.poet, 'عبيد');
+
+  ok('★ والخلافُ الذي ذكره الكتابُ في صفحته يُقرأ ★',
+     v[0]?.disputedPoets?.includes('أوس بن حجر'), JSON.stringify(v[0]?.disputedPoets));
+  ok('ويلحق أبياتَ القصيدة كلَّها', v[1]?.disputedPoets?.includes('أوس بن حجر'));
+
+  eq('وتُقرأ صيغُ الخلاف الأخرى', disputeInLine('ويروى لأبي تمام'), 'أبي تمام');
+  eq('و«وينسب إلى فلان»', disputeInLine('وينسب إلى البحتري'), 'البحتري');
+  eq('وما لا خلافَ فيه لا يُختلق', disputeInLine('وهذا من كلام العرب المشهور'), null);
+  eq('ومجهولٌ لا يُعدّ قولًا ثانيًا', disputeInLine('ويروى لبعض الأعراب'), null);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

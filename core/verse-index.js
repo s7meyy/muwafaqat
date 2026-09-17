@@ -9,7 +9,7 @@
 // وهذا الملف يعمل في المتصفّح وفي Node بلا تغيير: لا يقرأ ملفًّا ولا يطلب شبكة،
 // بل يأخذ `load` فيناديها. فالبناء والبحث يُختبران بلا قرصٍ ولا شبكة.
 
-import { normalize, fingerprint } from './normalize.js';
+import { normalize, fingerprint, poetKey } from './normalize.js';
 import { eraOf, hijriToGregorian } from './eras.js';
 import { shamelaUrl } from './trust.js';
 
@@ -190,6 +190,10 @@ export function toRecord(verse, id) {
     f: verse.glosses?.length ? verse.glosses.map((g) => [g.word, g.gloss]) : null,
     v: verse.variant ?? null,
     l: verse.lifespanSource?.label ?? null,   // من أين جاءت سنة الوفاة
+    // ★ وخلافٌ ذكره الكتابُ نفسه في صفحته يُحفظ كخلاف الكتب ★
+    //   («فجعلها يونس لعبيد… فلما قدم المفضّل صرفها إلى أوس بن حجر»)
+    x: verse.disputedPoets?.length
+      ? verse.disputedPoets.filter((n) => n && poetKey(n) !== poetKey(verse.poet ?? '')) : undefined,
     // n: عددُ الكتب التي ورد فيها · x: أسماءٌ أخرى نُسب إليها · y: كتبٌ أخرى
     // تُضاف عند التكرار وحده، فلا تزيد حجمَ البيت الذي ورد مرّةً واحدة.
   };

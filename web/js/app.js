@@ -148,9 +148,12 @@ function card(v, rank = 0) {
   //   وكثيرٌ من الشعر مختلَفٌ في نسبته، وعرضُ قولٍ واحدٍ كأنه إجماعٌ تدليس.
   // ★ وكثرةُ المختلفين لا تُسرد في سطر: ★ بيتٌ تنسبه عشرةُ كتبٍ لعشرةٍ يملأ
   //   البطاقة بالأسماء. فثلاثةٌ ثم عددُ الباقين، وتُكشف عند الطلب.
+  // ★ ولا يُقال «اختلفت الكتب» والخلافُ في كتابٍ واحد ★ — «طبقات فحول الشعراء»
+  //   يذكر الخلافَ في صفحته: «فجعلها يونس لعبيد… فلما قدم المفضّل صرفها إلى
+  //   أوس بن حجر». فالعبارةُ تصف الخلافَ ولا تدّعي عددَ من اختلف.
   const disputed = v.disputedPoets
-    ? `<p class="caveat">اختُلف في نسبته — نسبَه بعضُ الكتب إلى ${
-        v.disputedPoets.slice(0, 3).map(esc).join('، وبعضُها إلى ')}`
+    ? `<p class="caveat">اختُلف في نسبته — فهو عند ${
+        v.disputedPoets.slice(0, 3).map(esc).join('، وعند ')}`
       + (v.disputedPoets.length > 3
         ? `، <details class="more-poets"><summary>وإلى ${ar(String(v.disputedPoets.length - 3))} غيرهم</summary>`
           + `${v.disputedPoets.slice(3).map(esc).join(' · ')}</details>` : '')

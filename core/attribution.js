@@ -11,7 +11,7 @@
 //
 // وما لم يكن له سبب — لا يُنسب. «غير معروف» جوابٌ صادق، والتخمين ليس جوابًا.
 
-import { normalize, stripDiacritics } from './normalize.js';
+import { normalize, stripDiacritics, sameName } from './normalize.js';
 import { meterFromHeading, occasionOf } from './apparatus.js';
 
 const SEPARATOR = /\s(?:\.{3}|…|\*{3})\s/;
@@ -34,7 +34,7 @@ const SELF_REF = /(?:^|\s)(?:ل(?:نفسه|نفسها|نفسي|ه)|من\s+لفظ
 // تصريحٌ بالجهل بالقائل — وهو نسبةٌ صادقة إلى «لا أحد».
 // ★ و«رجل من بني الحارث» منه: ★ كان يُقتصّ منه «رجل» فيصير اسمًا لا يدلّ
 //   على أحد، ولا يطابق فهرس التراجم، ويُوهم القارئ أن للبيت قائلًا معروفًا.
-const ANONYMOUS = /(?:^|\s)(?:و?ل?آخر|و?لبعضهم|بعضهم|الشاعر|شاعر|بعض\s+الشعراء|بعض\s+العرب|أعرابي|و?لغيره|رجل\s+من|امرأة\s+من|فتى\s+من|شيخ\s+من|رجل\s*:)(?:\s|$|:)/;
+const ANONYMOUS = /(?:^|\s)(?:و?ل?آخر|و?لبعضهم|بعضهم|الشاعر|شاعر|بعض\s+الشعراء|بعض\s+العرب|بعض\s+الأعراب|بعض\s+أهل|أعرابي|و?لغيره|رجل\s+من|امرأة\s+من|فتى\s+من|شيخ\s+من|رجل\s*:)(?:\s|$|:)/;
 
 // أدوات النسبة. آخرُ ما يظهر منها في السطر هو الذي يعوَّل عليه،
 // لأن «٦ - الحث على السعي والجد: كقول شوقي:» فيها نقطتان، والنسبة عند الثانية.
@@ -145,6 +145,19 @@ export function readAttributionLine(line, { requireColon = false } = {}) {
   //   «قال العسكري نقلا عن الأصمعي وابن السكيت ★ يقول كيف ينعم ★ من كان…»
   //   فكان «كيف ينعم» يخرج شاعرًا، ويدوم على ما بعده من أبيات.
   const words = text.split(/\s+/).filter(Boolean).length;
+  // ★ «فذكروا قولَ عبيد» ثم يسوق شعره ★ — نسبةٌ في آخر سطرٍ طويلٍ بلا نقطتين.
+  //
+  //   «طبقات فحول الشعراء» يسوق الخبر بإسناده ثم يختم: «فذكروا قول عبيد»،
+  //   وتحته بيتاه. فكان يسقط كلُّه ويخرج البيتان بلا قائل. ولا تُقبل إلا حيث
+  //   ★ لا يبقى بعد الاسم شيء ★ — فالاسمُ آخرُ السطر، وما تحته شعرُه. وبهذا
+  //   لا يُقرأ «قال ذو الرمة» من داخل الإسناد: إنما يُقرأ آخرُ ما في السطر.
+  const trailingSaying = /(?:^|\s)(?:ب?ك?و?ف?قول)\s+(\S.{1,30})$/.exec(text);
+  if (trailingSaying && !/:\s*$/.test(text)) {
+    if (ANONYMOUS.test(' ' + text)) return { kind: 'anonymous' };
+    const name = cleanName(trailingSaying[1]);
+    if (name) return { kind: 'named', name };
+  }
+
   if (requireColon && words > 8 && !/:\s*$/.test(text)) return null;
 
   const anonymous = ANONYMOUS.test(' ' + text);
@@ -290,6 +303,24 @@ export function poetFromWebPage({ title = '', text = '', url = '' } = {}) {
   return { poet: null, poetSource: null };
 }
 
+// ★★ والكتابُ قد يذكر الخلافَ في النسبة صراحةً — فيُقرأ ولا يُرجَّح. ★★
+//
+//   «طبقات فحول الشعراء»: «فجعلها يونس لعبيد وعلى ذلك كان إجماعنا فلما قدم
+//   ★ المفضّل صرفها إلى أوس بن حجر ★». فالخلافُ علمٌ في الصفحة نفسها، وكنّا
+//   لا نعرفه إلا إذا اختلف كتابان في فهرسنا. والباحثُ في النسبة هذا مطلبُه.
+const DISPUTE = /(?:^|\s)(?:ويروى|يروى|وتروى|تروى|وينسب|ينسب|ونسبها|نسبها|ونسبه|نسبه|صرفها|صرفه|صرفهما|وقيل(?:\s*:)?(?:\s*(?:هي|هو|إنها|إنه|بل))?)\s+(?:إلى\s+|لـ?)(\S.{2,40}?)(?:\s*[،.؛]|$)/;
+
+/** اسمٌ آخرُ نُسب إليه البيتُ في الصفحة نفسها، أو null. */
+export function disputeInLine(line) {
+  const text = stripDiacritics(String(line ?? ''))
+    .replace(/«[^»]*»|"[^"]*"/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const m = DISPUTE.exec(text);
+  if (!m) return null;
+  if (ANONYMOUS.test(' ' + m[1])) return null;
+  return cleanName(m[1]);
+}
+
 /**
  * يمرّ على صفحةٍ سطرًا سطرًا فيُلحق بكل بيتٍ قائلَه.
  * النسبة تسري على الأبيات المتتالية حتى تَرِد نسبةٌ جديدة — لأن «وللشريف الرضي:»
@@ -339,6 +370,8 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
   }
 
   let inCommentary = false;
+  // أبياتُ النسبة الجارية — إن ذُكر خلافٌ بعدها لحق بها كلِّها
+  let run = [];
   // ★ ما يُورَّث إلى الصفحة التالية هو قائلُ آخرِ المتن لا آخرِ الشرح ★ —
   //   فالشرحُ يعترض في أسفل الصفحة، ومتنُ الصفحة التالية يستأنف قصيدةَ المتن.
   let matnPoet = null;
@@ -370,8 +403,19 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
 
     const read = prose.trim() ? readAttributionLine(prose, { requireColon: true }) : null;
 
+    // ★ الخلافُ يُقرأ قبل النسبة الجديدة ★ — فهو تعقيبٌ على ما قبله لا تصديرٌ لما بعده
+    if (!hasVerse && run.length) {
+      const other = disputeInLine(line);
+      if (other && !sameName(other, run[0].poet ?? '')) {
+        for (const item of run) {
+          const names = new Set([...(item.disputedPoets ?? []), other]);
+          item.disputedPoets = [...names];
+        }
+      }
+    }
+
     if (read) {
-      if (read.kind === 'named') { current = read.name; currentSource = 'line'; }
+      if (read.kind === 'named') { current = read.name; currentSource = 'line'; run = []; }
       else if (read.kind === 'anonymous') { current = null; currentSource = 'anonymous'; }
       else if (read.kind === 'inherit' && current) { currentSource = 'inherit'; }
       // «ومن شعره:» في رأس الترجمة — والضمير لصاحبها، سمّاه الكتاب في فهرسه
@@ -391,7 +435,7 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
         const ownVerse = bookPoet && !inCommentary && (bookNumbers ? v.numbered : true);
         if (ownVerse && currentSource === 'anonymous') { current = null; currentSource = null; }
         const anonymous = !ownVerse && currentSource === 'anonymous';
-        result.push({
+        const entry = {
           ...v,
           // ★ ويُقال للقارئ من أين جاء: متنُ الكتاب أم شرحُ شارحه ★
           fromCommentary: inCommentary || undefined,
@@ -401,7 +445,9 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
           poet: current ?? (anonymous || !ownVerse ? null : bookPoet) ?? null,
           poetSource: current ? currentSource
             : (anonymous ? 'anonymous' : (ownVerse ? (v.numbered ? 'book-numbered' : 'book') : null)),
-        });
+        };
+        result.push(entry);
+        run.push(entry);
       }
     }
   });
