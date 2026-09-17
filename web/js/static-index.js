@@ -165,3 +165,13 @@ async function meaningAndImagery(query, meta, seen) {
   }
   return out;
 }
+
+let auditPromise = null;
+
+/** ★ تقريرُ التدقيق بالعيّنة — نسبةُ خطأٍ مقيسةٌ تُنشر كما هي. ★ */
+export function auditReport() {
+  auditPromise ??= fetch(`${BASE}/audit.json`, { cache: 'force-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  return auditPromise;
+}

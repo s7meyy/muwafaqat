@@ -18,7 +18,7 @@ import { rankingNote } from '../../core/semantic.js';
 import { countLabel, PAGE, PLACE, SUGGESTION, MATCHED_VERSE, PAGES_READ, VERSE, BOOK_IN, POET } from '../../core/plural.js';
 import { splitVerses, looksArabic, inputKind } from '../../core/input.js';
 import { install as installApproval } from './approve.js';
-import { searchStatic, semanticMatches, indexMeta, imageryIndex, versesByIds } from './static-index.js';
+import { searchStatic, semanticMatches, indexMeta, imageryIndex, versesByIds, auditReport } from './static-index.js';
 import { saved, rejected, corrections, history, verseToText, exportText, downloadText, DEFAULT_GROUP } from './collections.js';
 import { researchHtml, csv, bibtexAll, byOldest } from '../../core/export.js';
 import { similarity } from '../../core/dedupe.js';
@@ -962,7 +962,23 @@ for (const b of document.querySelectorAll('.example')) {
 $('within')?.addEventListener('input', () => renderVerses());
 $('imagery-btn')?.addEventListener('click', () => openImagery());
 $('imagery-close')?.addEventListener('click', () => { $('imagery').hidden = true; });
-$('limits-btn')?.addEventListener('click', () => { const el = $('limits'); el.hidden = !el.hidden; });
+$('limits-btn')?.addEventListener('click', async () => {
+  const el = $('limits');
+  el.hidden = !el.hidden;
+  if (el.hidden || el.dataset.audited) return;
+  el.dataset.audited = '1';
+  // ★ ومشروعٌ شعارُه الصدقُ يَنشر نسبةَ خطئه المقيسة، لا يكتفي بدعوى الصدق ★
+  const a = await auditReport();
+  const li = document.createElement('li');
+  li.innerHTML = a
+    ? `<strong>خطؤه مقيسٌ ومنشور:</strong> أُعيد فتحُ صفحاتِ ${countLabel(a.checked, VERSE)} في المكتبة `
+      + `وقُورن النصّ حرفًا بحرف — فوُجد ${ar(String(Math.round((a.textAccuracy ?? 0) * 100)))}٪ منها كما نُقلت`
+      + (a.named ? `، ونسبةُ ${ar(String(Math.round((a.poetAccuracy ?? 0) * 100)))}٪ مؤيَّدةٌ بمصدرها` : '')
+      + (a.sampledAt ? ` (قِيس في ${ar(new Date(a.sampledAt).toLocaleDateString('ar-EG'))})` : '')
+      + '.'
+    : '<strong>لم يُقس خطؤه بعد:</strong> التدقيق بالعيّنة (tools/audit.js) لم يُشغَّل على هذا الفهرس.';
+  el.querySelector('ul')?.append(li);
+});
 $('keys-btn')?.addEventListener('click', () => { const el = $('keys'); el.hidden = !el.hidden; });
 
 // ★ اختصاراتٌ لمن يعمل ساعاتٍ في الموقع ★ — ولا تُلتقط وهو يكتب في حقل

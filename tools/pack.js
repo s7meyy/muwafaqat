@@ -22,6 +22,8 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) =>
 
 const IN = args.in ?? 'index/verses.jsonl';
 const OUT = args.out ?? 'web/index';
+// جذرُ المشروع — يُشتقّ من موضع هذا الملفّ لا من مجلّد التشغيل
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 // جيرانُ المعنى — إن وُجد ملفُّها ضُمَّت إلى الفهرس، وإلّا بُني لفظيًّا وقيل ذلك
 const NEIGHBORS = args.neighbors ?? 'index/neighbors.jsonl';
 
@@ -126,6 +128,25 @@ const perQuery = {
   typical: Math.round(tok.median * 3 + ver.median * CANDIDATE_SHARDS),
   heavy: Math.round(tok.max + tok.p95 * 2 + ver.p95 * CANDIDATE_SHARDS),
 };
+// ★ تقريرُ التدقيق يُنشر مع الفهرس ★ — فالرقمُ يُقرأ في الموقع لا في ملفٍّ عندنا.
+//
+// وكان يُلتمس بجوار ملفِّ المستخرَجات وحده، فإذا بُني الفهرس من ملفٍّ في
+// مكانٍ آخر (كمجلّدٍ مؤقّت) لم يُنشر التقرير وسكت الموقع عن خطئه المقيس.
+// فالآن يُلتمس في ثلاثة مواضع: ما أُمليَ بـ --audit، ثم جوارُ المستخرَجات،
+// ثم index/audit.json من جذر المشروع.
+const AUDIT_CANDIDATES = [
+  args.audit && args.audit !== true ? String(args.audit) : null,
+  path.join(path.dirname(IN), 'audit.json'),
+  path.join(ROOT, 'index', 'audit.json'),
+].filter(Boolean);
+const AUDIT_IN = AUDIT_CANDIDATES.find((f) => fs.existsSync(f)) ?? null;
+let audit = null;
+if (AUDIT_IN) {
+  fs.copyFileSync(AUDIT_IN, path.join(OUT, 'audit.json'));
+  try { audit = JSON.parse(fs.readFileSync(AUDIT_IN, 'utf8')); } catch { audit = null; }
+  built.meta.audited = true;
+}
+
 fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify({
   ...built.meta,
   filesWritten: { tokens: tok.count, verses: ver.count },
@@ -158,5 +179,11 @@ process.stdout.write(
       + `فالبحث بالمعنى يعمل بلا مفتاحٍ ولا شبكة\n`
     : `★ بلا جيرانِ معنًى — الفهرس لفظيٌّ وحده. شغّل tools/neighbors.js ليجد الموقعُ `
       + `«بقدر الكدّ تكتسب المعالي» لمن سأل بـ«وما نيل المطالب بالتمنّي»\n`)
+  + (audit?.checked
+    ? `التدقيق بالعيّنة: نصٌّ حرفيٌّ ${toArabicDigits(String(Math.round(audit.textAccuracy * 100)))}٪ · `
+      + `نسبةٌ مؤيَّدة ${toArabicDigits(String(Math.round((audit.poetAccuracy ?? 0) * 100)))}٪ `
+      + `(${toArabicDigits(String(audit.checked))} بيتًا) — منشورٌ في الموقع\n`
+    : `★ لا تقريرَ تدقيقٍ مع هذا الفهرس — شغّل tools/audit.js ثم أعد الحزم، `
+      + `فالموقع يقول لقارئه «لم يُقس خطؤه بعد»\n`)
   + `الذاكرة المستعملة: ${toArabicDigits(mb(peak))} م.ب\n`
   + `← ${OUT}\n`);

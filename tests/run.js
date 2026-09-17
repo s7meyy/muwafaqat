@@ -29,6 +29,7 @@ import { rejectReason, mergeQueries, parseModelJson } from '../core/queries.js';
 import { missingCategories, categoryName } from '../core/categories.js';
 import { imagesOf, buildImageryIndex } from '../core/imagery.js';
 import { fieldsOf, expandByMeaning } from '../core/meaning.js';
+import { auditVerse, summarize, sample } from '../core/audit.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1379,6 +1380,72 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   ok('والحقولُ نُقّيت من الملتبس',
      !fieldsOf('إلى الحول ثم اسم السلام عليكما').some((f) => f.field === 'الصحة والسقم'),
      'كانت «سلم» تُخرج تحيّةَ «السلام عليكما» في موضع العافية');
+}
+
+// ── التدقيقُ بالعيّنة ──────────────────────────────────────────────────────
+//
+// المقياسُ نفسُه يُقاس: أوّلُ تشغيلٍ له أعطى «صفرًا في النسبة» لأنه طلب اسمَ
+// الشاعر في نصّ الصفحة وأبياتُ الديوان منسوبةٌ من عنوان الكتاب. فهذه
+// الاختبارات تحرس المقياس من أن يعود كاذبًا في اتّجاهٍ أو في الآخر.
+{
+  const page = 'وقال لبيدُ بن ربيعة: ألا كلُّ شيءٍ ما خلا اللهَ باطلُ ... '
+    + 'وكلُّ نعيمٍ لا محالةَ زائلُ. ثم أنشد غيرَه.';
+
+  const good = auditVerse(
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل',
+      poet: 'لبيد بن ربيعة', poetSource: 'page' }, page);
+  ok('النصُّ الموجودُ حرفًا بحرف يُعدّ موافقًا', good.verbatim === true, good.reason ?? '');
+  eq('والنسبةُ المقروءةُ من الصفحة تُوجد فيها', good.poet, 'found');
+
+  const altered = auditVerse(
+    { text: 'ألا كل شيء ما عدا الله باطل ... وكل نعيم لا محالة زائل',
+      poet: 'لبيد بن ربيعة', poetSource: 'page' }, page);
+  ok('★ وحرفٌ واحدٌ يُغيَّر يُعدّ خطأً ★', altered.verbatim === false,
+     'المقياسُ إن تسامح في حرفٍ لم يعد مقياسًا');
+  ok('ويُقال أيُّ نصٍّ لم يوجد', /لم يوجد في الصفحة/.test(altered.reason ?? ''));
+
+  // ★ العلّةُ التي أفسدت أوّلَ قياس ★
+  const fromBook = auditVerse(
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل',
+      poet: 'لبيد بن ربيعة', poetSource: 'book',
+      source: { bookName: 'ديوان لبيد بن ربيعة العامري' } },
+    'صفحةٌ من الديوان لا يتكرّر فيها اسمُ صاحبه. ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل');
+  eq('★ ونسبةُ الديوان تُقاس بعنوانه لا بنصّ صفحته ★', fromBook.poet, 'from-title');
+
+  const mismatched = auditVerse(
+    { text: 'بيتٌ لا يُطلب نصُّه هنا', poet: 'امرؤ القيس', poetSource: 'book',
+      source: { bookName: 'ديوان لبيد بن ربيعة العامري' } }, page);
+  eq('وعنوانٌ لا يحمل الاسمَ نسبةٌ غيرُ مؤيَّدة', mismatched.poet, 'absent');
+
+  const noSource = auditVerse(
+    { text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل',
+      poet: 'لبيد بن ربيعة' }, page);
+  eq('★ ونسبةٌ بلا مصدرٍ مسجَّلٍ لا تُدان بل تُعزل ★', noSource.poet, 'no-source');
+
+  eq('والبيتُ بلا نسبةٍ لا يدخل مقياسَ النسبة',
+     auditVerse({ text: 'ألا كل شيء ما خلا الله باطل ... وكل نعيم لا محالة زائل' }, page).poet, 'none');
+
+  eq('وصفحةٌ تعذّر جلبُها خطأٌ لا نجاح',
+     auditVerse({ text: 'بيتٌ ما' }, '').verbatim, false);
+
+  const sum = summarize([
+    { verbatim: true, poet: 'found' }, { verbatim: true, poet: 'from-title' },
+    { verbatim: false, poet: 'absent' }, { verbatim: true, poet: 'none' },
+    { verbatim: true, poet: 'no-source' },
+  ]);
+  eq('الخلاصة تعدّ ما دُقّق', sum.checked, 5);
+  eq('ونسبةُ النصِّ على الجميع', sum.textAccuracy, 0.8);
+  eq('★ ومقامُ نسبةِ القائل المنسوبُ وحده ★', sum.named, 3);
+  eq('فالدقّةُ اثنان من ثلاثة', sum.poetAccuracy, 0.667);
+  eq('وغيرُ القابل للتدقيق يُعلن عددُه لا يُخفى', sum.unverifiable, 1);
+  ok('والإخفاقاتُ تُحفظ ليُنظر فيها', sum.failures.length === 1 && sum.poetMisses.length === 1);
+
+  // ★ بذرةٌ ثابتة: القياسُ يُعاد فيتطابق ★
+  const items = Array.from({ length: 50 }, (_, i) => i);
+  const a = sample(items, 10), b = sample(items, 10);
+  ok('العيّنةُ تتكرّر بعينها فيُقارَن القياسُ بالقياس', JSON.stringify(a) === JSON.stringify(b));
+  ok('وهي عيّنةٌ لا أوائلُ القائمة', JSON.stringify(a) !== JSON.stringify(items.slice(0, 10)));
+  eq('وحجمُها لا يتجاوز ما في اليد', sample(items, 500).length, 50);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
