@@ -211,6 +211,8 @@ async function main() {
           purpose: v.purpose ?? undefined, occasion: v.occasion ?? undefined,
           glosses: note?.glosses?.length ? note.glosses.slice(0, 3) : undefined,
           variant: note?.variant ?? undefined,
+          variantSource: note?.variantSource ?? undefined,
+          variantNote: note?.variantNote ?? undefined,
           deathYear: life?.deathYear ?? null,
           lifespanSource: life?.source ? { label: life.source.label } : null,
           source: {

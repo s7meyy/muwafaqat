@@ -189,6 +189,10 @@ export function toRecord(verse, id) {
     // شرحُ الغريب من حاشية المحقّق، وروايتُه الأخرى
     f: verse.glosses?.length ? verse.glosses.map((g) => [g.word, g.gloss]) : null,
     v: verse.variant ?? null,
+    // رمزُ النسخة الخطّية التي جاءت منها الرواية — «س» و«ب»
+    V: verse.variantSource ?? null,
+    // حكمُ المحقّق على تلك الرواية إن حكم («تصحيف»)
+    N: verse.variantNote ?? null,
     l: verse.lifespanSource?.label ?? null,   // من أين جاءت سنة الوفاة
     // ★ وخلافٌ ذكره الكتابُ نفسه في صفحته يُحفظ كخلاف الكتب ★
     //   («فجعلها يونس لعبيد… فلما قدم المفضّل صرفها إلى أوس بن حجر»)
@@ -228,6 +232,8 @@ export function fromRecord(rec) {
     occasion: rec.o ?? null,
     glosses: rec.f?.map(([word, gloss]) => ({ word, gloss })) ?? null,
     variant: rec.v ?? null,
+    variantSource: rec.V ?? null,
+    variantNote: rec.N ?? null,
     // ★ ورودُ البيت في كتبٍ عدّة خبرٌ عنه لا تكرارٌ يُطرح. ★
     occurrences: rec.n ?? 1,
     // أرقامُ الأبيات الموافقة في المعنى، محسوبةً يوم الفهرسة

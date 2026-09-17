@@ -222,7 +222,10 @@ function card(v, rank = 0) {
 
   // ★ الروايةُ الأخرى مصرَّحٌ بها في الحاشية ★ — واختلافُ الرواية مادّةُ بحث
   const variant = v.variant
-    ? `<p class="src">وفي روايةٍ: <bdi>${esc(v.variant)}</bdi><span class="hint"> — من حاشية المحقّق</span></p>`
+    ? `<p class="src">${v.variantSource ? `وفي نسخة «${esc(v.variantSource)}»` : 'وفي روايةٍ'}: `
+      + `<bdi>${esc(v.variant)}</bdi>`
+      + (v.variantNote ? `<span class="hint"> — وقال المحقّق: ${esc(v.variantNote)}</span>`
+        : '<span class="hint"> — من حاشية المحقّق</span>') + '</p>'
     : '';
 
   // ★ صورةُ البيت — اقترانٌ مرصودٌ في لفظه، لا تصنيفٌ من عندنا ★

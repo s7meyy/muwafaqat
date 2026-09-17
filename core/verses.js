@@ -9,7 +9,7 @@
 // فنقتصّ حدَّي البيت بعلامتين: علامات النثر قبله، و★ توازن الشطرين ★ — فالشطران
 // في العربية متقاربان في عدد الكلمات، وهذا أقوى فاصلٍ بين البيت وما التصق به.
 
-import { normalize, wordCount, isMostlyArabic, stripDiacritics } from './normalize.js';
+import { normalize, wordCount, isMostlyArabic, stripDiacritics, stripGluedMarks, lastGluedMark } from './normalize.js';
 
 const SEPARATOR = /\s(?:\.{3}|…|\*{3}|؟؟)\s/;
 const SEPARATOR_G = /\s(?:\.{3}|…|\*{3})\s/g;
@@ -226,12 +226,14 @@ export function extractVerses(pageText) {
       const doubted = /^\s*(?:[\u0660-\u0669\u06F0-\u06F90-9]{1,3}\s*[-–—.)]?\s*)?\[/.test(before)
         && /\]\s*$/.test(after.trim());
 
-      const tadweer = detectTadweer(trim(sadr), trim(ajz));
-      const cleanSadr = trim(sadr);
-      const cleanAjz = trim(ajz);
+      // ★ ويُقصّ الرقمُ الملتصق كما يُقصّ الرقمُ المقوَّس ★
+      const gluedMark = lastGluedMark(trim(ajz)) ?? lastGluedMark(trim(sadr));
+      const cleanSadr = stripGluedMarks(trim(sadr));
+      const cleanAjz = stripGluedMarks(trim(ajz));
+      const tadweer = detectTadweer(cleanSadr, cleanAjz);
       out.push({
         doubted,
-        footnote: footMark,
+        footnote: footMark ?? gluedMark,
         sadr: cleanSadr,
         ajz: cleanAjz,
         text: `${cleanSadr} ... ${cleanAjz}`,

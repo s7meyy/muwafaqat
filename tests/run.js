@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { normalize, fingerprint, toArabicDigits, isMostlyArabic, sameName, poetKey } from '../core/normalize.js';
+import { normalize, fingerprint, toArabicDigits, isMostlyArabic, sameName, poetKey, stripGluedMarks } from '../core/normalize.js';
 import { extractVerses } from '../core/verses.js';
 import { attributeVerses, poetFromBookName, readAttributionLine, entrySubject, disputeInLine } from '../core/attribution.js';
 import { bookHealth, healthLine, looksLikeName, needsReview } from '../core/health.js';
@@ -1646,6 +1646,42 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
   eq('و«وينسب إلى فلان»', disputeInLine('وينسب إلى البحتري'), 'البحتري');
   eq('وما لا خلافَ فيه لا يُختلق', disputeInLine('وهذا من كلام العرب المشهور'), null);
   eq('ومجهولٌ لا يُعدّ قولًا ثانيًا', disputeInLine('ويروى لبعض الأعراب'), null);
+}
+
+// ── البِنية الحادية عشرة: «الكامل» للمبرّد — رقمُ حاشيةٍ ملتصق ────────────
+//
+// صفحةٌ حقيقية (٨٥٠٥: ١١٠). الكتاب يُلصق رقمَ الحاشية بالكلمة بلا قوسٍ ولا
+// فاصل: «أعرف منه★١★ قلة النعاس»، «ليل الهوجل★٣★»، «قال أبو كبيرٍ★٢★ الهذلي:».
+// فكان الرقم يبقى في نصّ البيت فيُعرض على الباحث وينتقل إلى رسالته، ويبقى في
+// اسم القائل فيُردّ الاسمُ كلُّه (لأن فيه رقمًا) فيخرج الشعر بلا قائل.
+{
+  const page = 'وكذا قال أبو كبيرٍ٢ الهذلي:\n'
+    + 'فأتت به حوش الجنان مبطناً ... سهداً إذا ما نام ليل الهوجل٣\n';
+  const [v] = extractVerses(page);
+  ok('★ فيُقصّ الرقمُ الملتصق كما يُقصّ المقوَّس ★', v && !/[٠-٩]/.test(v.text), v?.text);
+  eq('ويُحفظ مفتاحًا لشرح غريبه', v?.footnote, '٣');
+
+  const att = attributeVerses(page, extractVerses(page), { bookName: 'الكامل في اللغة والأدب' });
+  eq('★ واسمُ القائل لا يُردّ لرقمٍ لصق به ★', att[0]?.poet, 'أبو كبير الهذلي');
+
+  eq('والقصُّ لا يمسّ ما لم يلتصق', stripGluedMarks('في سنة ٢٣٠ هـ'), 'في سنة ٢٣٠ هـ');
+  eq('ويمسّ الملتصق وحده', stripGluedMarks('ليل الهوجل٣'), 'ليل الهوجل');
+
+  // ★ وروايةُ النسخة الخطّية تُقرأ، ويُقرأ معها حكمُ المحقّق ★
+  const notes = parseFootnotes('١ س: "أعرف فيه".\n٢ س: "أبوبكير"، تصحيف.\n٣ الهوجل: الأحمق.');
+  eq('فتُقرأ روايةُ النسخة', notes.get('1')?.variant, 'أعرف فيه');
+  eq('ويُحفظ رمزُ نسختها — فالروايةُ بلا ناقلٍ خبرٌ بلا سند', notes.get('1')?.variantSource, 'س');
+  eq('★ وحكمُ المحقّق على الرواية يُقال ★', notes.get('2')?.variantNote, 'تصحيف');
+  eq('وما كان شرحَ غريبٍ لا يُقلب روايةً', notes.get('3')?.variant, null);
+  eq('ويبقى شرحًا', notes.get('3')?.glosses?.[0]?.word, 'الهوجل');
+
+  // ★ والمناسبةُ لقصيدةٍ بعينها، فتسقط بسقوط صاحبها ★
+  const two = 'وقال آخر يصف ابنه:\nأعرف منه قلة النعاس ... وخفةٌ في رأسه من راسي\n'
+    + 'وكذا قال أبو كبيرٍ الهذلي:\nفأتت به حوش الجنان مبطناً ... سهداً إذا ما نام ليل الهوجل\n';
+  const both = attributeVerses(two, extractVerses(two), { bookName: 'الكامل في اللغة والأدب' });
+  eq('فمناسبةُ الأوّل له', both[0]?.occasion, 'يصف ابنه');
+  eq('★ ولا تلحق شعرَ من بعده ★', both[1]?.occasion, null);
+  eq('واسمُ القائل ليس من المناسبة', occasionOf('وقال آخر يصف ابنه:')?.occasion, 'يصف ابنه');
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────

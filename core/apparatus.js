@@ -59,7 +59,9 @@ export function occasionOf(line) {
   const t = stripDiacritics(String(line ?? '')).replace(/\s+/g, ' ').trim();
   const m = OCCASION.exec(t);
   if (!m) return null;
-  const occasion = m[1].trim();
+  // ★ واسمُ القائل ليس من المناسبة ★ — «وقال ★آخر★ يصف ابنه:» مناسبتُه «يصف
+  //   ابنه»، فكانت البطاقة تقول «قاله آخر يصف ابنه» وليس في الكتاب من ذلك شيء.
+  const occasion = m[1].trim().replace(/^(?:آخر|بعضهم|الشاعر|شاعر|أعرابي|غيره|رجل)\s+/, '');
   if (!occasion || occasion.split(' ').length > 14) return null;
   const hit = PURPOSES.find((p) => p.re.test(' ' + occasion));
   return { occasion, purpose: hit?.purpose ?? null };
@@ -70,6 +72,11 @@ const FOOT_LINE = /^\s*[\(\[]?([٠-٩۰-۹0-9]{1,3})[\)\]]?\s*[-:]?\s*(.+)$/;
 const GLOSS = /([^.،؛]{2,30}?)\s*:\s*([^.]{2,120})/g;
 // «وما بين قوسين يروى بلفظ: [بغير]» — الروايةُ الأخرى مصرَّحًا بها
 const VARIANT = /يروى\s+بلفظ\s*:?\s*[\[\(]?\s*([^\]\)\.]{2,40})/;
+// ★ ورواياتُ النسخ الخطّية تُكتب برمز النسخة ★ — «الكامل» للمبرّد يقول في
+//   حاشيته: «١ ★س★: "أعرف فيه"»، أي أن في نسخة «س» هذا اللفظ مكان لفظ المتن.
+//   وهي أنفسُ ما في الحاشية عند المحقِّق، وكانت تُطرح كلُّها لأنها ليست
+//   «يروى بلفظ». ويُحفظ معها رمزُ النسخة، فالروايةُ بلا ناقلٍ خبرٌ بلا سند.
+const MS_VARIANT = /(?:^|[\s.،؛])([\u0621-\u064A]{1,4})\s*:\s*["«]([^"»]{2,60})["»]/;
 
 /**
  * حواشي الصفحة مفهرسةً برقم التعليق.
@@ -94,8 +101,20 @@ export function parseFootnotes(footText) {
       if (!word || !gloss || /يروى|يروي|رواية/.test(word) || word.split(' ').length > 4) continue;
       glosses.push({ word, gloss });
     }
-    const variant = VARIANT.exec(body)?.[1]?.trim() ?? null;
-    out.set(normalizeDigits(marker), { text: body.trim(), glosses, variant });
+    let variant = VARIANT.exec(body)?.[1]?.trim() ?? null;
+    let variantSource = null;
+    let variantNote = null;
+    if (!variant) {
+      const ms = MS_VARIANT.exec(body);
+      if (ms) {
+        variantSource = ms[1].trim();
+        variant = ms[2].trim();
+        // ★ وحكمُ المحقّق على الرواية من الرواية ★ — «س: "أبوبكير"، تصحيف»
+        //   فعرضُها روايةً مجرّدةً كتمانٌ لحكمه، وطرحُها كتمانٌ للرواية.
+        variantNote = /تصحيف|تحريف|خطأ|صوابه|سقط/.exec(body)?.[0] ?? null;
+      }
+    }
+    out.set(normalizeDigits(marker), { text: body.trim(), glosses, variant, variantSource, variantNote });
   }
   return out;
 }

@@ -11,7 +11,7 @@
 //
 // وما لم يكن له سبب — لا يُنسب. «غير معروف» جوابٌ صادق، والتخمين ليس جوابًا.
 
-import { normalize, stripDiacritics, sameName } from './normalize.js';
+import { normalize, stripDiacritics, sameName, stripGluedMarks } from './normalize.js';
 import { meterFromHeading, occasionOf } from './apparatus.js';
 
 const SEPARATOR = /\s(?:\.{3}|…|\*{3})\s/;
@@ -130,7 +130,7 @@ export function readAttributionLine(line, { requireColon = false } = {}) {
   //   «وكذلك قال ﵊: "أفضل كلمة قالها شاعر كلمة لبيد" وهو يريد قصيدة لبيد بن
   //   ربيعة التي أولها:» — كان «قالها شاعر» داخلَ الحديث يُقرأ تصريحًا بالجهل،
   //   فيُمحى لبيدٌ من بيته المشهور. والمقتبَس كلامٌ محكيّ لا إحالةَ فيه على قائل.
-  const text = stripDiacritics(String(line ?? ''))
+  const text = stripGluedMarks(stripDiacritics(String(line ?? '')))
     .replace(/«[^»]*»|"[^"]*"|“[^”]*”/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -415,7 +415,14 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
     }
 
     if (read) {
-      if (read.kind === 'named') { current = read.name; currentSource = 'line'; run = []; }
+      if (read.kind === 'named') {
+        // ★ والمناسبةُ والبحرُ لقصيدةٍ بعينها، فيسقطان بسقوط صاحبها ★
+        //   «وقال آخر ★يصف ابنه★:» ثم «وكذا قال أبو كبير الهذلي:» — كانت
+        //   مناسبةُ الأوّل تلحق شعرَ الثاني، فيُقال في بطاقته «قاله يصف ابنه»
+        //   وليس في الكتاب من ذلك شيء.
+        if (!sameName(read.name, current ?? '')) { occasion = null; meter = null; }
+        current = read.name; currentSource = 'line'; run = [];
+      }
       else if (read.kind === 'anonymous') { current = null; currentSource = 'anonymous'; }
       else if (read.kind === 'inherit' && current) { currentSource = 'inherit'; }
       // «ومن شعره:» في رأس الترجمة — والضمير لصاحبها، سمّاه الكتاب في فهرسه

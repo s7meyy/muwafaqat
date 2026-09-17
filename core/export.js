@@ -79,7 +79,9 @@ export function researchHtml(items, { title = 'الموافقات', chronologica
     const glosses = v.glosses?.length
       ? `<p class="gloss">شرحُ غريبه (من حاشية المحقّق): ${
           v.glosses.map((g) => `${esc(g.word)}: ${esc(g.gloss)}`).join(' · ')}</p>` : '';
-    const variant = v.variant ? `<p class="gloss">وفي روايةٍ: ${esc(v.variant)}</p>` : '';
+    const variant = v.variant
+      ? `<p class="gloss">${v.variantSource ? `وفي نسخة «${esc(v.variantSource)}»` : 'وفي روايةٍ'}: ${esc(v.variant)}`
+        + `${v.variantNote ? ` — وقال المحقّق: ${esc(v.variantNote)}` : ''}</p>` : '';
     const doubted = v.doubted
       ? '<p class="gloss">وردَ بين معقوفتين في المطبوع — علامةُ المحقّق على الشكّ فيه.</p>' : '';
     const disputed = v.disputedPoets?.length
