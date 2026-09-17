@@ -1014,6 +1014,9 @@ $('limits-btn')?.addEventListener('click', async () => {
     ? `<strong>خطؤه مقيسٌ ومنشور:</strong> أُعيد فتحُ صفحاتِ ${countLabel(a.checked, VERSE)} في المكتبة `
       + `وقُورن النصّ حرفًا بحرف — فوُجد ${ar(String(Math.round((a.textAccuracy ?? 0) * 100)))}٪ منها كما نُقلت`
       + (a.named ? `، ونسبةُ ${ar(String(Math.round((a.poetAccuracy ?? 0) * 100)))}٪ مؤيَّدةٌ بمصدرها` : '')
+      + (a.completeness != null
+        ? `، و${ar(String(Math.round(a.completeness * 100)))}٪ تامّةٌ لم يُبتر منها شطر`
+        : '')
       + (a.books?.length ? `، ${countLabel(a.books.length, BOOK_IN)}` : '')
       + (a.sampledAt ? ` (قِيس في ${ar(new Date(a.sampledAt).toLocaleDateString('ar-EG'))})` : '')
       + '.'

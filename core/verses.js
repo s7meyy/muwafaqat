@@ -69,8 +69,10 @@ function sadrCandidates(before) {
  * فالوقوف عند نقطتي «وكلمة:» يجعل العجز كلمةً واحدة، فيُردّ البيت كلُّه ويسقط
  * من الفهرس. فنجمع حدود العجز مرشَّحاتٍ ونحتكم إلى موازنة الشطرين.
  */
-function ajzCandidates(after) {
+function ajzCandidates(after, delimited = false) {
   const head = after.slice(0, MAX_SCAN);
+  // ★ والقوسُ الحاضنُ حدٌّ يقوله الكتابُ نفسه ★ — فلا يُلتمس حدٌّ دونه
+  if (delimited) return head.trim() ? [head.trim()] : [];
   const cuts = [];
   PROSE_BOUNDARY.lastIndex = 0;
   let m;
@@ -97,24 +99,32 @@ function cutAjz(after, sadrWords) {
 }
 
 /** يختار من مرشَّحي الشطرين ما يوازن بعضه بعضًا، ويُرجع الزوج أو null. */
-function bestPair(before, after) {
+function bestPair(before, after, delimited = false) {
   const candidates = sadrCandidates(before);
   if (!candidates.length) return null;
-  const ajzList = ajzCandidates(after);
+  const ajzList = ajzCandidates(after, delimited);
   if (!ajzList.length) return null;
-  const longest = candidates[0];
-  const roughAjz = capAjz(ajzList[0], Math.min(MAX_WORDS, wordCount(longest) || MAX_WORDS));
-  const target = wordCount(roughAjz);
-
+  // ★ ولا يُقاس المرشَّحون على أوّلهم ★
+  //
+  //   كان التقديرُ يُحسب على أوّل مرشَّحٍ للعجز — وأوّلُه أقصرُه، لأنه الوقوفُ
+  //   عند أوّل حدّ. فإذا وقعت في البيت كلمةٌ من كلمات الحدّ («مثل»، «نحو»،
+  //   «قال») قُصَّ البيتُ عندها وفاز القصُّ لأن المقياس منه اشتُقّ:
+  //     «وعينان كالماويتين ومحجر ... إِلَى سَنَد ★مثل الرتاج المضبب★»
+  //   فكان يُعرض «... إلى سند» — بترٌ صامتٌ في نصٍّ يُنقل عنه في رسالة.
+  //   فالحكمُ الآن الموازنةُ وحدها، وعند التساوي يُؤخذ ★ الأطول ★: فما زاد
+  //   من كلام البيت أَولى بالحفظ مما اقتُطع بظنّ حدٍّ ليس بحدّ.
   let best = null;
   for (const sadr of candidates) {
     const a = wordCount(sadr);
     for (const raw of ajzList) {
-      const ajz = capAjz(raw, a);
+      const ajz = delimited ? raw : capAjz(raw, a);
       if (!acceptable(sadr, ajz)) continue;
       const b = wordCount(ajz);
-      const score = Math.abs(a - (target || b)) + Math.abs(a - b);
-      if (!best || score < best.score) best = { sadr, ajz, score };
+      const score = Math.abs(a - b);
+      const length = a + b;
+      if (!best || score < best.score || (score === best.score && length > best.length)) {
+        best = { sadr, ajz, score, length };
+      }
     }
   }
   return best;
@@ -164,7 +174,19 @@ export function extractVerses(pageText) {
       const after = footMatch ? rawAfter.slice(0, footMatch.index) : rawAfter;
       const footMark = footMatch?.[1] ?? null;
 
-      const pair = bestPair(before, after);
+      // ★★ البيتُ الذي حَضَنه الكتابُ بقوسين لا يُقصّ بكلمةٍ من كلامه. ★★
+      //
+      //   «طبقات فحول الشعراء» يكتب أبياته هكذا: «(وعينان كالماويتين ومحجر
+      //   ... إِلَى سَنَد ★مثل★ الرتاج المضبب)» — و«مثل» من حدود النثر عندنا،
+      //   فكان العجزُ يُقَصّ عندها ويُعرض «... إلى سند». وهو بترٌ صامتٌ في
+      //   نصٍّ يُنقل عنّا إلى رسالة. والقوسُ حدٌّ قاله الكتاب، فهو أَولى.
+      const openBracket = /^\s*(?:[\u0660-\u0669\u06F0-\u06F90-9]{1,3}\s*[-–—.)]?\s*)?([(\[])/.exec(before);
+      const closer = openBracket ? (openBracket[1] === '(' ? ')' : ']') : null;
+      const closeAt = closer ? after.indexOf(closer) : -1;
+      const delimited = closeAt > 0;
+      const bounded = delimited ? after.slice(0, closeAt + 1) : after;
+
+      const pair = bestPair(before, bounded, delimited);
       if (!pair) continue;
       const { sadr, ajz } = pair;
 

@@ -115,6 +115,13 @@ async function main() {
       + ` · من عنوان الكتاب: ${ar(String(report.fromTitle))}`
       + ` · لم تُدقَّق: ${ar(String(report.unverifiable))}`);
   }
+  log(`★ والبيتُ تامٌّ لم يُبتر منه شطر: ${ar(String(Math.round((report.completeness ?? 0) * 100)))}٪`
+    + ` (${ar(String(report.checked - report.truncated))} من ${ar(String(report.checked))})`);
+  if (report.truncations?.length) {
+    log('');
+    log('أبياتٌ يظهر أنها بُترت — وبقيّةُ سطرها في الكتاب:');
+    for (const t of report.truncations.slice(0, 10)) log(`   - ${t.book} ص${t.page}: ${t.text} ← «${t.tail}»`);
+  }
   if (report.failures.length) {
     log('');
     log('أبياتٌ لم يوجد نصُّها في صفحتها:');

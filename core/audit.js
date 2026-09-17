@@ -62,11 +62,46 @@ export function auditVerse(verse, pageText, prevText = null) {
     }
   }
 
+  const tail = verbatim ? tailAfterVerse(pageText, verse.text) : null;
   return {
     verbatim,
     poet,
+    // ما بقي من سطر البيت بعد عجزه — دليلُ بترٍ إن كان كلامًا عربيًّا
+    truncated: tail ? true : undefined,
+    tail: tail ? stripDiacritics(tail).slice(0, 40) : undefined,
     reason: verbatim ? null : `لم يوجد في الصفحة: «${stripDiacritics(missing[0]).slice(0, 40)}…»`,
   };
+}
+
+// ★★ والنصُّ الصادقُ قد يكون ناقصًا. ★★
+//
+//   التدقيقُ بالحرف يُمسك التحريف ولا يُمسك البتر: «... إلى سَنَد» موجودةٌ في
+//   صفحتها حرفًا بحرف، وتمامُ البيت «إلى سند مثل الرتاج المضبب». فيُطلب ما
+//   بقي من سطر البيت بعد عجزه: إن بقي كلامٌ عربيٌّ قبل حدّ السطر أو القوس
+//   الخاتم فالبيتُ مبتور، ويُعلن ذلك عددًا ومثالًا.
+const ARABIC_WORD = /[\u0621-\u064A]{2,}/;
+// ★ وما بعد البيت من كلام الكتاب ليس بترًا ★ — الشاهدُ يُساق داخل النثر،
+//   فيَعقُبه في سطره «وقال فلان» و«يقول» و«أي». فلا يُعدّ ذلك نقصًا في البيت.
+const PROSE_TAIL = /^(?:و?ف?قال|و?قوله|و?أنشد|يقول|يعني|أي|ثم|ومنه|ومنها|وهذا|وهو|فلما|قلت|انشد)(?:\s|$)/;
+const TAIL_NOISE = /^[\s)\]»›"”.،:؛\u0640]*$/;
+
+export function tailAfterVerse(pageText, verseText) {
+  const [, ajzRaw] = String(verseText ?? '').split(/\s*(?:\.{3}|…)\s*/);
+  const part = normalize(ajzRaw ?? verseText ?? '');
+  if (!part) return null;
+  for (const line of String(pageText ?? '').replace(/\r/g, '').split('\n')) {
+    const flat = normalize(line.replace(/\s+/g, ' '));
+    const at = flat.indexOf(part);
+    if (at < 0) continue;
+    let rest = flat.slice(at + part.length);
+    // رقمُ الحاشية ليس من البيت، وكذلك القوسُ الخاتم وعلاماتُ الوقف
+    rest = rest.replace(/[(\[«‹][\u0660-\u0669\u06F0-\u06F90-9]{1,3}[)\]»›]?/g, ' ');
+    if (TAIL_NOISE.test(rest)) return null;
+    const tail = rest.trim();
+    if (PROSE_TAIL.test(tail)) return null;
+    return ARABIC_WORD.test(tail) ? tail : null;
+  }
+  return null;
 }
 
 /** خلاصةُ العيّنة — أرقامٌ تُنشر كما هي. */
@@ -80,14 +115,19 @@ export function summarize(results) {
   const fromPage = results.filter((r) => r.poet === 'found').length;
   const fromTitle = results.filter((r) => r.poet === 'from-title').length;
   const fromPrev = results.filter((r) => r.poet === 'from-prev').length;
+  const truncated = results.filter((r) => r.truncated).length;
   return {
     checked,
     verbatim,
     textAccuracy: checked ? Number((verbatim / checked).toFixed(3)) : null,
+    // ★ وتمامُ النصّ غيرُ صحّته ★ — بيتٌ مبتورٌ نصُّه حرفيٌّ وهو ناقص
+    truncated,
+    completeness: checked ? Number(((checked - truncated) / checked).toFixed(3)) : null,
     named: named.length,
     poetFound, fromPage, fromTitle, fromPrev, unverifiable,
     poetAccuracy: named.length ? Number((poetFound / named.length).toFixed(3)) : null,
     failures: results.filter((r) => !r.verbatim).slice(0, 20),
+    truncations: results.filter((r) => r.truncated).slice(0, 20),
     poetMisses: named.filter((r) => r.poet === 'absent').slice(0, 20),
   };
 }

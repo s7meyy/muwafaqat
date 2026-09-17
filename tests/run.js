@@ -31,6 +31,7 @@ import { imagesOf, buildImageryIndex } from '../core/imagery.js';
 import { fieldsOf, expandByMeaning } from '../core/meaning.js';
 import { auditVerse, summarize, sample } from '../core/audit.js';
 import { buildPoemIndex, runFor, placeKey } from '../core/poems.js';
+import { tailAfterVerse } from '../core/audit.js';
 import { expand, councilSize } from '../bridge/council.js';
 import { installFakeFetch, FAKE_ENV } from './fake-models.js';
 import { installFakeWeb, FAKE_WEB_ENV, fakeLookup } from './fake-web.js';
@@ -1589,6 +1590,34 @@ ok('و«الدنيا» كذلك', indexTokens('الدنيا').includes('دنيا
      fix ? `نُسب إلى «${fix.poet}»` : '(لم يُستخرج بيت التصويب)');
   ok('ويُوسم بأنه من الشرح ليعود إليه الباحث', fix?.fromCommentary === true);
   ok('وأبياتُ المتن لا تُوسم بذلك', !b[0]?.fromCommentary);
+}
+
+// ── القوسُ الحاضنُ حدٌّ، والبترُ يُقاس ─────────────────────────────────────
+//
+// صفحةٌ حقيقية من «طبقات فحول الشعراء» (٦٧٣٨: ٩١): «(وعينان كالماويتين ومحجر
+// ... إِلَى سَنَد ★مثل★ الرتاج المضبب)». و«مثل» من حدود النثر عندنا، فكان
+// العجزُ يُقَصّ عندها ويُعرض «... إلى سند» — بترٌ صامتٌ لا يكشفه التدقيقُ
+// بالحرف، لأن المبتور موجودٌ في صفحته حرفًا بحرف.
+{
+  const line = '(وعينان كالماويتين ومحجر ... إِلَى سَنَد مثل الرتاج المضبب)';
+  const [v] = extractVerses(line);
+  ok('★ فالبيتُ الذي حَضَنه الكتابُ بقوسين لا يُقصّ بكلمةٍ من كلامه ★',
+     v && /الرتاج المضبب$/.test(v.text), v ? v.text : '(لم يُستخرج)');
+  ok('ولا يبقى القوسُ في النصّ', v && !/[()]/.test(v.text), v?.text);
+
+  // والقوسُ لا يُلغي الموازنة فيما لا قوسَ له
+  const prose = 'قال: إن الكلام لفي الفؤاد وإنما ... جعل اللسان على الفؤاد دليلا. ثم قال';
+  const [w] = extractVerses(prose);
+  ok('وما لا قوسَ له يبقى على حكم الموازنة', w && /دليلا/.test(w.text), w?.text ?? '(لا بيت)');
+
+  // ★ ويُقاس البترُ نفسه في التدقيق ★
+  eq('فيُعلَن ما بقي من سطر البيت بعد عجزه',
+     tailAfterVerse(line, 'وعينان كالماويتين ومحجر ... إِلَى سَنَد'), 'مثل الرتاج المضبب');
+  eq('والتامُّ لا يُتَّهم', tailAfterVerse(line, 'وعينان كالماويتين ومحجر ... إِلَى سَنَد مثل الرتاج المضبب'), null);
+  eq('★ وكلامُ الكتاب بعد الشاهد ليس بترًا في البيت ★',
+     tailAfterVerse('لا يكاد يفعل ذلك ... إلا قليلا. وقال أبو العتاهية:', 'لا يكاد يفعل ذلك ... إلا قليلا'), null);
+  eq('ورقمُ الحاشية بعده ليس بترًا',
+     tailAfterVerse('كفى قاتلا سلخي الشهور وإهلالي «٢»', 'كفى قاتلا سلخي الشهور وإهلالي'), null);
 }
 
 // ── الخلاصة ───────────────────────────────────────────────────────────────
