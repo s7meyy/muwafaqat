@@ -179,6 +179,9 @@ export function toRecord(verse, id) {
     s: verse.mashtur ? 1 : 0,
     // شاهدٌ نُقل كما ورد في النثر، بلا فصلٍ بين شطريه
     e: verse.unsplit ? 1 : 0,
+    // ★ جاء في شرح الكتاب لا في متنه ★ — شاهدٌ للشارح أو بيتُ تصويبٍ يسوقه،
+    //   فلا يُنسب إلى صاحب الكتاب، ويُقال للقارئ من أين جاء.
+    h: verse.fromCommentary ? 1 : 0,
     // ★ ما كتبه الكتاب نفسه: بحرُ القصيدة وغرضُها ومناسبتُها ★ — لا تخمين
     z: verse.meter ?? null,
     j: verse.purpose ?? null,
@@ -214,6 +217,7 @@ export function fromRecord(rec) {
     doubted: Boolean(rec.w),
     mashtur: Boolean(rec.s),
     unsplit: Boolean(rec.e),
+    fromCommentary: Boolean(rec.h),
     meter: rec.z ?? null,
     meterSource: rec.z ? 'book' : null,
     purpose: rec.j ?? null,

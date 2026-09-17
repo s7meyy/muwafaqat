@@ -215,6 +215,11 @@ const NOT_A_POET = new Set([
   'العرب','العجم','المتون','الافعال','الاداب','السلوك','الوصايا','الزبد','الاصول',
   'الفقه','الحديث','القران','الشريعة','الطالبين','المبتدي','الاحكام','الفرائض',
   'العقيدة','التوحيد','النحو','الصرف','البلاغة','الميراث','الصلاة','الحج','الفعل',
+  // ★ والمختاراتُ دواوينُ بلا صاحبٍ واحد ★ — «شرح ديوان الحماسة» كان يُخرج
+  //   قائلًا اسمُه «الحماسة»، ويُنسب إليه شعرُ معدان وزفر وعامر بن الطفيل.
+  //   والحماسةُ اختيارُ أبي تمّام من شعر الناس، لا ديوانَ رجلٍ بعينه.
+  'الحماسه','المفضليات','الاصمعيات','المعلقات','المختارات','المنتخب','الاختيارين',
+  'الوحشيات','النقائض','الجمهره','الاغاني','الامالي','الشعراء','الشعر','الديوان',
 ]);
 
 // عناوين الفهرس التي ليست تراجمَ أشخاص
@@ -293,6 +298,13 @@ export function poetFromWebPage({ title = '', text = '', url = '' } = {}) {
  * يُرجع لكل بيت: { poet, poetSource } حيث poetSource ∈ line | inherit | book | null
  * وpoet = null معناه «غير معروف»، ويُعرض هكذا صراحةً.
  */
+// ★ سطرُ الفاصل بين المتن والشرح ★ — «شرح ديوان الحماسة» يضع «ــ» ثم يسوق
+//   كلام الشارح مرقَّمًا. وما بعده ليس من متن الكتاب: شواهدُ يستشهد بها،
+//   وأبياتُ تصويبٍ يقول فيها «والصواب بدل هذا البيت». فكان بيتُ التصويب
+//   يُنسب إلى الشاعر الذي صُدِّرت به الصفحة، وهو ليس له ولا في موضعه.
+//   فيُقطع عند الفاصل كلُّ ما يسري: النسبةُ، والبحرُ، والمناسبة.
+const MATN_SEPARATOR = /^[\u0640\u2014\u2015\u2500-\u257F_=~\-\s]{2,}$/;
+
 export function attributeVerses(pageText, verses, { bookName, carry = null, entryPoet = null } = {}) {
   const lines = String(pageText ?? '').replace(/\r/g, '').split('\n');
   const byLine = new Map();
@@ -326,9 +338,20 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
     currentSource = 'carry';
   }
 
+  let inCommentary = false;
+  // ★ ما يُورَّث إلى الصفحة التالية هو قائلُ آخرِ المتن لا آخرِ الشرح ★ —
+  //   فالشرحُ يعترض في أسفل الصفحة، ومتنُ الصفحة التالية يستأنف قصيدةَ المتن.
+  let matnPoet = null;
+
   lines.forEach((line, i) => {
     const versesHere = byLine.get(i);
     const hasVerse = Boolean(versesHere);
+
+    if (!hasVerse && line.trim() && MATN_SEPARATOR.test(line.trim())) {
+      if (!inCommentary) matnPoet = current;
+      inCommentary = true;
+      current = null; currentSource = null; meter = null; occasion = null;
+    }
 
     // السطر الذي فيه بيتٌ قد يحمل النسبة في نثره الذي يسبق البيت — وما بعد ذلك شِعرٌ لا نثر.
     // فلا نقرأ «ما قبل الفاصل» (فذاك الشطر الأول نفسه)، بل «ما قبل البيت» وحده.
@@ -363,11 +386,15 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
         // ★ لكنّ الجهل لا يسري: ★ البيت المرقَّم بعده من شعر صاحب الديوان،
         //   فالمحقّق يرقّم أبياته ولا يرقّم الشواهد. ولولا هذا لصار نصفُ الديوان
         //   «غير معروف» لأن شاهدًا واحدًا ورد في شرح بيتٍ قبله.
-        const ownVerse = bookPoet && (bookNumbers ? v.numbered : true);
+        // ★ وشاهدُ الشارح ليس من شعر صاحب الكتاب ★ — فديوانٌ يُشرح في حواشيه
+        //   يستشهد بغير صاحبه، ونسبتُه إليه كذبٌ بترقيمٍ أو بغير ترقيم.
+        const ownVerse = bookPoet && !inCommentary && (bookNumbers ? v.numbered : true);
         if (ownVerse && currentSource === 'anonymous') { current = null; currentSource = null; }
         const anonymous = !ownVerse && currentSource === 'anonymous';
         result.push({
           ...v,
+          // ★ ويُقال للقارئ من أين جاء: متنُ الكتاب أم شرحُ شارحه ★
+          fromCommentary: inCommentary || undefined,
           meter, meterSource: meter ? 'book' : null,
           occasion: occasion?.occasion ?? null,
           purpose: occasion?.purpose ?? null,
@@ -381,7 +408,9 @@ export function attributeVerses(pageText, verses, { bookName, carry = null, entr
 
   // ما يُورَّث إلى الصفحة التالية: القائل الصريح القائم عند آخر الصفحة.
   //   ولا يُورَّث المجهولُ ولا ما لم يُقرأ له اسم.
-  result.carry = current ? { name: current } : null;
+  //   ولا يُورَّث ما قُرئ في الشرح: متنُ الصفحة التالية يستأنف من المتن.
+  const inherited = inCommentary ? matnPoet : current;
+  result.carry = inherited ? { name: inherited } : null;
   return result;
 }
 

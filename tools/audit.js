@@ -60,20 +60,36 @@ async function main() {
   });
 
   const pages = new Map();
+  const prevOf = new Map();          // صفحةُ البيت ← رقمُ سابقتها كما يقوله الكتاب
+  const fetchPage = async (bookId, pageId) => {
+    const key = `${bookId}:${pageId}`;
+    if (pages.has(key)) return pages.get(key);
+    let body = '';
+    try {
+      const r = await client.callTool('shamela_get_page', {
+        book_id: bookId, page_id: pageId, response_format: 'json',
+      });
+      body = r?.body ?? r?.page?.body ?? '';
+      const prev = r?.prev_page_id ?? r?.page?.prev_page_id ?? null;
+      if (prev) prevOf.set(key, prev);
+    } catch { body = ''; }
+    pages.set(key, body);
+    return body;
+  };
+
   const results = [];
   for (const [i, v] of chosen.entries()) {
     const key = `${v.source.bookId}:${v.source.pageId}`;
-    if (!pages.has(key)) {
-      let body = '';
-      try {
-        const r = await client.callTool('shamela_get_page', {
-          book_id: v.source.bookId, page_id: v.source.pageId, response_format: 'json',
-        });
-        body = r?.body ?? r?.page?.body ?? '';
-      } catch { body = ''; }
-      pages.set(key, body);
+    const body = await fetchPage(v.source.bookId, v.source.pageId);
+    // ★ والنسبةُ الموروثةُ تُدقَّق في صفحتها التي جاءت منها ★ — فالكتاب يُصدِّر
+    //   «وقال زفر بن الحرث» في آخر صفحةٍ ثم يسوق شعره في التالية.
+    let prevBody = null;
+    const inherited = ['carry', 'inherit', 'entry'].includes(v.poetSource);
+    if (inherited) {
+      const prevId = prevOf.get(key) ?? (v.source.pageId > 1 ? v.source.pageId - 1 : null);
+      if (prevId) prevBody = await fetchPage(v.source.bookId, prevId);
     }
-    const r = auditVerse(v, pages.get(key));
+    const r = auditVerse(v, body, prevBody);
     results.push({ ...r, text: v.text.slice(0, 60), book: v.source.bookName, page: v.source.printedPage });
     if ((i + 1) % 10 === 0) log(`  ${ar(String(i + 1))}/${ar(String(chosen.length))}`);
   }
@@ -92,8 +108,12 @@ async function main() {
   log(`★ نصُّ البيت موجودٌ في صفحته: ${ar(String(Math.round((report.textAccuracy ?? 0) * 100)))}٪`
     + ` (${ar(String(report.verbatim))} من ${ar(String(report.checked))})`);
   if (report.named) {
-    log(`★ واسمُ القائل مذكورٌ في الصفحة: ${ar(String(Math.round((report.poetAccuracy ?? 0) * 100)))}٪`
+    log(`★ والنسبةُ مؤيَّدةٌ بمصدرها: ${ar(String(Math.round((report.poetAccuracy ?? 0) * 100)))}٪`
       + ` (${ar(String(report.poetFound))} من ${ar(String(report.named))})`);
+    log(`   منها من نصّ الصفحة: ${ar(String(report.fromPage))}`
+      + ` · من الصفحة السابقة (نسبةٌ موروثة): ${ar(String(report.fromPrev ?? 0))}`
+      + ` · من عنوان الكتاب: ${ar(String(report.fromTitle))}`
+      + ` · لم تُدقَّق: ${ar(String(report.unverifiable))}`);
   }
   if (report.failures.length) {
     log('');

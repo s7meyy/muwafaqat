@@ -19,8 +19,14 @@ export function preparePage(pageText) {
  * تدقيقُ بيتٍ واحدٍ في صفحته.
  * يُرجع { verbatim, poet, reason } — و`poet` ∈ found | absent | none (لا نسبة له)
  */
-export function auditVerse(verse, pageText) {
+export function auditVerse(verse, pageText, prevText = null) {
   const page = preparePage(pageText);
+  // ★ النسبةُ الموروثةُ تُدقَّق في صفحتها التي جاءت منها ★ — «شرح الحماسة»
+  //   يُصدِّر «وقال زفر بن الحرث» في آخر صفحةٍ ثم يسوق شعره في التالية، فاسمُه
+  //   ليس في صفحة البيت أصلًا. فقياسُها على صفحة البيت وحدها يُدين قاعدةً
+  //   صحيحة، وإهمالُها يُجمّل الرقم. فتُطلب في الصفحة السابقة، وإن لم تكن
+  //   عندنا قيل «لم تُدقَّق» وأُعلن عددُها.
+  const prev = prevText == null ? null : preparePage(prevText);
   if (!page) return { verbatim: false, poet: 'none', reason: 'الصفحة فارغة أو تعذّر جلبها' };
 
   // ★ المقارنة على الشطرين لا على النصّ الموصول: ★ الكتب تفصل بينهما بـ«...»
@@ -47,6 +53,10 @@ export function auditVerse(verse, pageText) {
       // ادّعاؤنا أن الكتاب ينسب نفسه — فيُطلب الاسمُ في عنوانه
       const title = poetKey(verse.source?.bookName ?? '');
       poet = name && title.includes(name.split(' ')[0]) ? 'from-title' : 'absent';
+    } else if (source === 'carry' || source === 'inherit' || source === 'entry') {
+      if (name && page.includes(name)) poet = 'found';
+      else if (prev === null) poet = 'carry-unchecked';
+      else poet = prev.includes(name) ? 'from-prev' : 'absent';
     } else {
       poet = name && page.includes(name) ? 'found' : 'absent';
     }
@@ -63,17 +73,19 @@ export function auditVerse(verse, pageText) {
 export function summarize(results) {
   const checked = results.length;
   const verbatim = results.filter((r) => r.verbatim).length;
-  const unverifiable = results.filter((r) => r.poet === 'no-source').length;
-  const named = results.filter((r) => r.poet !== 'none' && r.poet !== 'no-source');
-  const poetFound = named.filter((r) => r.poet === 'found' || r.poet === 'from-title').length;
+  const unverifiable = results.filter((r) => r.poet === 'no-source' || r.poet === 'carry-unchecked').length;
+  const named = results.filter((r) => !['none', 'no-source', 'carry-unchecked'].includes(r.poet));
+  const SUPPORTED = ['found', 'from-title', 'from-prev'];
+  const poetFound = named.filter((r) => SUPPORTED.includes(r.poet)).length;
   const fromPage = results.filter((r) => r.poet === 'found').length;
   const fromTitle = results.filter((r) => r.poet === 'from-title').length;
+  const fromPrev = results.filter((r) => r.poet === 'from-prev').length;
   return {
     checked,
     verbatim,
     textAccuracy: checked ? Number((verbatim / checked).toFixed(3)) : null,
     named: named.length,
-    poetFound, fromPage, fromTitle, unverifiable,
+    poetFound, fromPage, fromTitle, fromPrev, unverifiable,
     poetAccuracy: named.length ? Number((poetFound / named.length).toFixed(3)) : null,
     failures: results.filter((r) => !r.verbatim).slice(0, 20),
     poetMisses: named.filter((r) => r.poet === 'absent').slice(0, 20),

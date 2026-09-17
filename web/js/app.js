@@ -191,6 +191,10 @@ function card(v, rank = 0) {
   // ★ نُقل كما ورد في النثر: يُقال، ولا يُقسم شطرين بالتخمين ★
   const unsplit = v.unsplit
     ? '<span class="badge t-mudawwar" title="ساقه الكتابُ داخل نثره بلا فصلٍ بين الشطرين، فنُقل كما ورد">لم يُفصل شطراه</span>' : '';
+  // ★ من شرح الكتاب لا من متنه ★ — شاهدٌ ساقه الشارح أو بيتُ تصويبٍ أورده،
+  //   فلا يُنسب إلى صاحب الكتاب، ويُقال للباحث من أين جاء ليعود إليه.
+  const commentary = v.fromCommentary
+    ? '<span class="badge t-mudawwar" title="ورد في شرح الكتاب (كلام الشارح) لا في متنه — فقائله لا يُؤخذ من عنوان الكتاب">من الشرح</span>' : '';
   const mudawwar = v.mudawwar
     ? `<span class="badge t-mudawwar" title="الكلمة «${esc(v.splitWord ?? '')}» موزَّعةٌ على الشطرين كما في المطبوع">مدوَّر</span>` : '';
 
@@ -285,7 +289,7 @@ function card(v, rank = 0) {
       ${life ? `<span>${life}</span>` : ''}
       ${era ? `<span>${esc(era)}</span>` : ''}
       <span class="badge ${trust.cls}">${trust.label}</span>
-      ${nabati}${mashtur}${unsplit}${mudawwar}${agreed}${bySense}
+      ${nabati}${mashtur}${unsplit}${commentary}${mudawwar}${agreed}${bySense}
     </div>
     <p class="src">${where}${link}${occurrences}</p>
     ${context}${imagery}${prosody}${glosses}${variant}${alsoIn}${doubted}${disputed}${caveat}${pairing}${dated}${via}
@@ -1010,6 +1014,7 @@ $('limits-btn')?.addEventListener('click', async () => {
     ? `<strong>خطؤه مقيسٌ ومنشور:</strong> أُعيد فتحُ صفحاتِ ${countLabel(a.checked, VERSE)} في المكتبة `
       + `وقُورن النصّ حرفًا بحرف — فوُجد ${ar(String(Math.round((a.textAccuracy ?? 0) * 100)))}٪ منها كما نُقلت`
       + (a.named ? `، ونسبةُ ${ar(String(Math.round((a.poetAccuracy ?? 0) * 100)))}٪ مؤيَّدةٌ بمصدرها` : '')
+      + (a.books?.length ? `، ${countLabel(a.books.length, BOOK_IN)}` : '')
       + (a.sampledAt ? ` (قِيس في ${ar(new Date(a.sampledAt).toLocaleDateString('ar-EG'))})` : '')
       + '.'
     : '<strong>لم يُقس خطؤه بعد:</strong> التدقيق بالعيّنة (tools/audit.js) لم يُشغَّل على هذا الفهرس.';
